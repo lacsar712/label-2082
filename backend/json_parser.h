@@ -11,5 +11,7 @@ void get_leaderboard_json(char *buf, const char *period);
 void get_runner_detail_json(char *buf, const char *username);
 void get_lostfound_json(char *buf, const char *type_filter, const char *category_filter,
                         const char *keyword, const char *sort_order, const char *creator_filter);
+void get_notifications_json(char *buf, const char *username, int unread_only);
+int get_unread_notification_count(const char *username);
 
 #endif

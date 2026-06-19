@@ -13,6 +13,9 @@ int next_id = 1;
 LostFound lostfound_list[MAX_LOSTFOUND];
 int lostfound_count = 0;
 int lostfound_next_id = 1;
+Notification notifications[MAX_NOTIFICATIONS];
+int notification_count = 0;
+int notification_next_id = 1;
 
 const char* get_user_real_name(const char *username) {
   for (int i = 0; i < user_count; i++) {
@@ -21,6 +24,30 @@ const char* get_user_real_name(const char *username) {
     }
   }
   return username;
+}
+
+void create_notification(const char *username, const char *type, const char *title, const char *summary, const char *related_id) {
+  if (notification_count >= MAX_NOTIFICATIONS) {
+    log_message(LOG_WARN, "Notification limit reached, cannot create more");
+    return;
+  }
+  if (!username || strlen(username) == 0) return;
+
+  Notification *n = &notifications[notification_count++];
+  n->id = notification_next_id++;
+  strncpy(n->username, username, sizeof(n->username) - 1);
+  strncpy(n->type, type ? type : "system", sizeof(n->type) - 1);
+  strncpy(n->title, title ? title : "系统通知", sizeof(n->title) - 1);
+  strncpy(n->summary, summary ? summary : "", sizeof(n->summary) - 1);
+  strncpy(n->related_id, related_id ? related_id : "", sizeof(n->related_id) - 1);
+  n->is_read = 0;
+
+  time_t t = time(NULL);
+  struct tm *tm_info = localtime(&t);
+  strftime(n->created_at, sizeof(n->created_at), "%Y-%m-%d %H:%M:%S", tm_info);
+
+  save_data();
+  log_message(LOG_INFO, "Notification created for user %s: %s", username, n->title);
 }
 
 void save_data() {
@@ -54,6 +81,17 @@ void save_data() {
     log_message(LOG_INFO, "LostFound data saved successfully");
   } else {
     log_message(LOG_ERROR, "Failed to save lostfound data");
+  }
+
+  FILE *f4 = fopen("data_notifications.bin", "wb");
+  if (f4) {
+    fwrite(&notification_count, sizeof(int), 1, f4);
+    fwrite(&notification_next_id, sizeof(int), 1, f4);
+    fwrite(notifications, sizeof(Notification), notification_count, f4);
+    fclose(f4);
+    log_message(LOG_INFO, "Notifications data saved successfully");
+  } else {
+    log_message(LOG_ERROR, "Failed to save notifications data");
   }
 }
 
@@ -272,6 +310,17 @@ void load_data() {
     log_message(LOG_INFO, "Loaded %d lostfound items", lostfound_count);
   } else {
     log_message(LOG_WARN, "No existing lostfound data found");
+  }
+
+  FILE *f4 = fopen("data_notifications.bin", "rb");
+  if (f4) {
+    fread(&notification_count, sizeof(int), 1, f4);
+    fread(&notification_next_id, sizeof(int), 1, f4);
+    fread(notifications, sizeof(Notification), notification_count, f4);
+    fclose(f4);
+    log_message(LOG_INFO, "Loaded %d notifications", notification_count);
+  } else {
+    log_message(LOG_WARN, "No existing notifications data found");
   }
 
   if (user_count == 0) {

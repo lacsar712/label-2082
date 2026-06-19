@@ -214,13 +214,47 @@ static void handle_update_status(int client_socket, char *body) {
 
   for (int i = 0; i < order_count; i++) {
     if (orders[i].id == id) {
+      char old_status[20];
+      strcpy(old_status, orders[i].status);
       strcpy(orders[i].status, new_status);
-      // Only set worker if it's a pending order being accepted
       if (strcmp(new_status, "accepted") == 0 && strlen(worker) > 0) {
         strcpy(orders[i].worker, worker);
       }
       save_data();
       log_message(LOG_INFO, "Order %d status updated to: %s", id, new_status);
+
+      char related_id[20];
+      snprintf(related_id, sizeof(related_id), "%d", id);
+      char summary[300];
+
+      if (strcmp(new_status, "accepted") != 0 || strcmp(old_status, "pending") == 0) {
+        if (strcmp(new_status, "accepted") == 0) {
+          snprintf(summary, sizeof(summary), "您的订单（%s）已被 %s 接单，请耐心等待送达",
+                   orders[i].package_info, get_user_real_name(orders[i].worker));
+          create_notification(orders[i].creator, "order", "订单已被接单", summary, related_id);
+          snprintf(summary, sizeof(summary), "您已成功接单：%s，取件地址：%s",
+                   orders[i].package_info, orders[i].pickup_addr);
+          create_notification(orders[i].worker, "order", "接单成功", summary, related_id);
+        } else if (strcmp(new_status, "delivered") == 0) {
+          snprintf(summary, sizeof(summary), "订单（%s）已送达，请及时确认收货并完成支付",
+                   orders[i].package_info);
+          create_notification(orders[i].creator, "order", "订单已送达", summary, related_id);
+        } else if (strcmp(new_status, "completed") == 0) {
+          snprintf(summary, sizeof(summary), "订单（%s）已确认完成，感谢您的服务！",
+                   orders[i].package_info);
+          create_notification(orders[i].worker, "order", "订单已完成", summary, related_id);
+          snprintf(summary, sizeof(summary), "您的订单（%s）已完成，感谢使用校递快跑！",
+                   orders[i].package_info);
+          create_notification(orders[i].creator, "order", "订单已完成", summary, related_id);
+        } else if (strcmp(new_status, "cancelled") == 0) {
+          if (strlen(orders[i].worker) > 0) {
+            snprintf(summary, sizeof(summary), "订单（%s）已被发布者撤回",
+                     orders[i].package_info);
+            create_notification(orders[i].worker, "order", "订单已被撤回", summary, related_id);
+          }
+        }
+      }
+
       char response[] = "HTTP/1.1 200 OK\r\nContent-Type: "
                         "application/json\r\n\r\n{\"status\":\"success\"}";
       send(client_socket, response, strlen(response), 0);
@@ -519,6 +553,145 @@ static void handle_offline_lostfound(int client_socket, char *body) {
   send(client_socket, response, strlen(response), 0);
 }
 
+static void handle_get_notifications(int client_socket, char *query_string) {
+  char username[50] = "";
+  int unread_only = 0;
+
+  if (query_string) {
+    char *u_ptr = strstr(query_string, "username=");
+    if (u_ptr) {
+      char decoded[50] = {0};
+      sscanf(u_ptr + 9, "%[^& ]", decoded);
+      strncpy(username, decoded, sizeof(username) - 1);
+    }
+    if (strstr(query_string, "unread=1") || strstr(query_string, "unread=true")) {
+      unread_only = 1;
+    }
+  }
+
+  if (strlen(username) == 0) {
+    char response[] =
+        "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+        "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少username参数\"}";
+    send(client_socket, response, strlen(response), 0);
+    return;
+  }
+
+  char response_header[] =
+      "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+      "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(MAX_NOTIFICATIONS * 1024);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for notifications JSON");
+    return;
+  }
+  memset(json, 0, MAX_NOTIFICATIONS * 1024);
+  get_notifications_json(json, username, unread_only);
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "Notifications fetched - user:%s unread_only:%d", username, unread_only);
+}
+
+static void handle_get_unread_count(int client_socket, char *query_string) {
+  char username[50] = "";
+
+  if (query_string) {
+    char *u_ptr = strstr(query_string, "username=");
+    if (u_ptr) {
+      char decoded[50] = {0};
+      sscanf(u_ptr + 9, "%[^& ]", decoded);
+      strncpy(username, decoded, sizeof(username) - 1);
+    }
+  }
+
+  if (strlen(username) == 0) {
+    char response[] =
+        "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+        "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少username参数\"}";
+    send(client_socket, response, strlen(response), 0);
+    return;
+  }
+
+  int count = get_unread_notification_count(username);
+  char resp[256];
+  snprintf(resp, sizeof(resp),
+           "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+           "{\"status\":\"success\",\"count\":%d}",
+           count);
+  send(client_socket, resp, strlen(resp), 0);
+
+  log_message(LOG_INFO, "Unread count fetched - user:%s count:%d", username, count);
+}
+
+static void handle_mark_read(int client_socket, char *body) {
+  int id = parse_json_int(body, "id");
+  char username[50] = "";
+  parse_json_string(body, "username", username, sizeof(username));
+
+  if (id == -1) {
+    char response[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                      "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少id\"}";
+    send(client_socket, response, strlen(response), 0);
+    return;
+  }
+
+  for (int i = 0; i < notification_count; i++) {
+    if (notifications[i].id == id) {
+      if (strlen(username) > 0 &&
+          strcmp(notifications[i].username, username) != 0) {
+        char response[] = "HTTP/1.1 403 Forbidden\r\nContent-Type: "
+                          "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"无权限操作\"}";
+        send(client_socket, response, strlen(response), 0);
+        return;
+      }
+      notifications[i].is_read = 1;
+      save_data();
+      log_message(LOG_INFO, "Notification %d marked as read", id);
+      char response[] = "HTTP/1.1 200 OK\r\nContent-Type: "
+                        "application/json\r\n\r\n{\"status\":\"success\"}";
+      send(client_socket, response, strlen(response), 0);
+      return;
+    }
+  }
+
+  char response[] = "HTTP/1.1 404 Not Found\r\nContent-Type: "
+                    "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"通知不存在\"}";
+  send(client_socket, response, strlen(response), 0);
+}
+
+static void handle_mark_all_read(int client_socket, char *body) {
+  char username[50] = "";
+  parse_json_string(body, "username", username, sizeof(username));
+
+  if (strlen(username) == 0) {
+    char response[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                      "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少username\"}";
+    send(client_socket, response, strlen(response), 0);
+    return;
+  }
+
+  int marked = 0;
+  for (int i = 0; i < notification_count; i++) {
+    if (strcmp(notifications[i].username, username) == 0 &&
+        !notifications[i].is_read) {
+      notifications[i].is_read = 1;
+      marked++;
+    }
+  }
+  save_data();
+  log_message(LOG_INFO, "Marked %d notifications as read for user %s", marked, username);
+
+  char resp[256];
+  snprintf(resp, sizeof(resp),
+           "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+           "{\"status\":\"success\",\"marked\":%d}",
+           marked);
+  send(client_socket, resp, strlen(resp), 0);
+}
+
 void handle_request(int client_socket) {
   char buffer[BUFFER_SIZE];
   memset(buffer, 0, BUFFER_SIZE);
@@ -619,6 +792,26 @@ void handle_request(int client_socket) {
     if (body) {
       body += 4;
       handle_offline_lostfound(client_socket, body);
+    }
+  } else if (strstr(buffer, "GET /api/notifications")) {
+    char *path_start = strstr(buffer, "GET /api/notifications");
+    char *q = strstr(path_start, "?");
+    handle_get_notifications(client_socket, q);
+  } else if (strstr(buffer, "GET /api/unread_count")) {
+    char *path_start = strstr(buffer, "GET /api/unread_count");
+    char *q = strstr(path_start, "?");
+    handle_get_unread_count(client_socket, q);
+  } else if (strstr(buffer, "POST /api/mark_read")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_mark_read(client_socket, body);
+    }
+  } else if (strstr(buffer, "POST /api/mark_all_read")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_mark_all_read(client_socket, body);
     }
   } else {
     log_message(LOG_WARN, "404 Not Found: %.50s", buffer);

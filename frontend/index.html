@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>校递快跑 - 大学生代取快递平台</title>
-    <link rel="stylesheet" href="style.css?v=2">
+    <link rel="stylesheet" href="style.css?v=3">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -68,6 +68,10 @@
             </div>
             <nav class="nav-menu">
                 <a href="#" class="nav-item active" data-tab="dashboard"><i class="fas fa-th-large"></i> 任务大厅</a>
+                <a href="#" class="nav-item" data-tab="notifications">
+                    <i class="fas fa-bell"></i> 消息通知
+                    <span class="notif-badge hidden" id="notif-badge">0</span>
+                </a>
                 <a href="#" class="nav-item" data-tab="lostfound"><i class="fas fa-bullhorn"></i> 失物招领</a>
                 <a href="#" class="nav-item" data-tab="leaderboard"><i class="fas fa-trophy"></i> 跑腿排行榜</a>
                 <a href="#" class="nav-item" data-tab="my-orders"><i class="fas fa-clipboard-list"></i> 我的订单</a>
@@ -115,6 +119,40 @@
                     <button class="pill" data-filter="中通">中通/圆通</button>
                 </div>
                 <div class="order-grid" id="order-list"></div>
+            </section>
+
+            <!-- Notifications -->
+            <section class="view-section hidden" id="notifications-tab">
+                <div class="section-header">
+                    <h2><i class="fas fa-bell" style="color: var(--primary);"></i> 消息通知中心</h2>
+                    <div style="display:flex; gap:10px; align-items:center;">
+                        <div class="notif-filter-toggle">
+                            <button class="notif-filter-btn active" data-notif-filter="all">全部</button>
+                            <button class="notif-filter-btn" data-notif-filter="unread">未读</button>
+                        </div>
+                        <button class="btn-primary" id="mark-all-read-btn" style="flex:none; padding:10px 20px;">
+                            <i class="fas fa-check-double"></i> 全部已读
+                        </button>
+                    </div>
+                </div>
+                <div class="notif-type-tabs">
+                    <button class="notif-type-tab active" data-notif-type="all">
+                        <i class="fas fa-layer-group"></i> 全部消息
+                    </button>
+                    <button class="notif-type-tab" data-notif-type="order">
+                        <i class="fas fa-box"></i> 订单动态
+                    </button>
+                    <button class="notif-type-tab" data-notif-type="system">
+                        <i class="fas fa-bullhorn"></i> 系统公告
+                    </button>
+                    <button class="notif-type-tab" data-notif-type="auth">
+                        <i class="fas fa-shield-alt"></i> 认证结果
+                    </button>
+                    <button class="notif-type-tab" data-notif-type="report">
+                        <i class="fas fa-flag"></i> 举报处理
+                    </button>
+                </div>
+                <div class="notif-list" id="notif-list"></div>
             </section>
 
             <!-- Leaderboard -->
@@ -398,7 +436,7 @@
         </div>
     </div>
 
-    <script src="script.js?v=4"></script>
+    <script src="script.js?v=5"></script>
 </body>
 
 </html>

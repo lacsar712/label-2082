@@ -4,6 +4,7 @@
 #define MAX_ORDERS 500
 #define MAX_USERS 100
 #define MAX_LOSTFOUND 500
+#define MAX_NOTIFICATIONS 2000
 #define BUFFER_SIZE 20480
 
 typedef struct {
@@ -41,5 +42,16 @@ typedef struct {
   char created_at[32];
   char updated_at[32];
 } LostFound;
+
+typedef struct {
+  int id;
+  char username[50];
+  char type[30];
+  char title[100];
+  char summary[300];
+  char related_id[20];
+  int is_read;
+  char created_at[32];
+} Notification;
 
 #endif

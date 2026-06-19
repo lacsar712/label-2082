@@ -13,6 +13,11 @@ document.addEventListener('DOMContentLoaded', () => {
         view: 'all' // 'all' or 'mine'
     };
     let lfSearchTimer = null;
+    let notifState = {
+        type: 'all',
+        filter: 'all'
+    };
+    let notifPollTimer = null;
 
     const elements = {
         authOverlay: document.getElementById('auth-overlay'),
@@ -65,7 +70,12 @@ document.addEventListener('DOMContentLoaded', () => {
         lfDescription: document.getElementById('lf-description'),
         lfLocation: document.getElementById('lf-location'),
         lfContact: document.getElementById('lf-contact'),
-        lfCategory: document.getElementById('lf-category')
+        lfCategory: document.getElementById('lf-category'),
+        notifBadge: document.getElementById('notif-badge'),
+        notifList: document.getElementById('notif-list'),
+        markAllReadBtn: document.getElementById('mark-all-read-btn'),
+        notifFilterBtns: document.querySelectorAll('.notif-filter-btn'),
+        notifTypeTabs: document.querySelectorAll('.notif-type-tab')
     };
 
     // --- Authentication ---
@@ -79,9 +89,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const pkgCustomerDisp = document.getElementById('pkg-customer-disp');
             if (pkgCustomerDisp) pkgCustomerDisp.textContent = currentUser.realName;
 
-            // Go to dashboard by default to clear any previous account's tab state
+            startNotificationPolling();
+            fetchUnreadCount();
+
             document.querySelector('[data-tab="dashboard"]').click();
         } else {
+            stopNotificationPolling();
             elements.authOverlay.classList.remove('hidden');
             elements.mainApp.classList.add('hidden');
         }
@@ -186,6 +199,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (tab === 'profile') loadProfile();
             if (tab === 'leaderboard') fetchLeaderboard();
             if (tab === 'lostfound') fetchLostFound();
+            if (tab === 'notifications') {
+                fetchNotifications();
+                fetchUnreadCount();
+            }
         };
     });
 
@@ -866,6 +883,191 @@ document.addEventListener('DOMContentLoaded', () => {
         lfState.view = 'mine';
         fetchLostFound();
     };
+
+    // --- Notifications Logic ---
+    async function fetchUnreadCount() {
+        if (!currentUser) return;
+        try {
+            const resp = await fetch(`/api/unread_count?username=${encodeURIComponent(currentUser.username)}`);
+            const data = await resp.json();
+            if (data.status === 'success') {
+                updateNotifBadge(data.count);
+            }
+        } catch (err) {
+            console.error('Failed to fetch unread count:', err);
+        }
+    }
+
+    function updateNotifBadge(count) {
+        if (!elements.notifBadge) return;
+        if (count > 0) {
+            elements.notifBadge.classList.remove('hidden');
+            elements.notifBadge.textContent = count > 99 ? '99+' : count;
+        } else {
+            elements.notifBadge.classList.add('hidden');
+        }
+    }
+
+    function startNotificationPolling() {
+        stopNotificationPolling();
+        notifPollTimer = setInterval(() => {
+            if (currentUser) fetchUnreadCount();
+        }, 30000);
+    }
+
+    function stopNotificationPolling() {
+        if (notifPollTimer) {
+            clearInterval(notifPollTimer);
+            notifPollTimer = null;
+        }
+    }
+
+    async function fetchNotifications() {
+        if (!currentUser) return;
+        try {
+            let url = `/api/notifications?username=${encodeURIComponent(currentUser.username)}`;
+            if (notifState.filter === 'unread') {
+                url += '&unread=1';
+            }
+            const resp = await fetch(url);
+            const notifications = await resp.json();
+            renderNotifications(notifications);
+        } catch (err) {
+            console.error('Failed to fetch notifications:', err);
+            showToast('加载通知失败');
+        }
+    }
+
+    function renderNotifications(notifications) {
+        if (!elements.notifList) return;
+
+        let filtered = notifications;
+        if (notifState.type !== 'all') {
+            filtered = notifications.filter(n => n.type === notifState.type);
+        }
+
+        if (filtered.length === 0) {
+            const emptyText = notifState.filter === 'unread'
+                ? '暂无未读消息'
+                : (notifState.type !== 'all' ? '暂无该类型的消息' : '暂无任何消息');
+            elements.notifList.innerHTML = `
+                <div class="notif-empty">
+                    <i class="fas fa-inbox"></i>
+                    <h3>${emptyText}</h3>
+                    <p>有新消息时会在这里显示哦～</p>
+                </div>
+            `;
+            return;
+        }
+
+        elements.notifList.innerHTML = '';
+        filtered.forEach(notif => {
+            const typeIconMap = {
+                'order': 'fa-box',
+                'system': 'fa-bullhorn',
+                'auth': 'fa-shield-alt',
+                'report': 'fa-flag'
+            };
+            const typeTextMap = {
+                'order': '订单动态',
+                'system': '系统公告',
+                'auth': '认证结果',
+                'report': '举报处理'
+            };
+            const iconClass = typeIconMap[notif.type] || 'fa-bell';
+            const typeText = typeTextMap[notif.type] || '系统消息';
+            const notifClass = notif.type || 'system';
+
+            const card = document.createElement('div');
+            card.className = `notif-item ${notif.isRead ? '' : 'unread'}`;
+            card.innerHTML = `
+                <div class="notif-icon ${notifClass}">
+                    <i class="fas ${iconClass}"></i>
+                </div>
+                <div class="notif-content">
+                    <div class="notif-title">
+                        ${notif.isRead ? '' : '<span class="notif-unread-dot"></span>'}
+                        <span>${escapeHtml(notif.title)}</span>
+                    </div>
+                    <div class="notif-summary">${escapeHtml(notif.summary)}</div>
+                    <div class="notif-meta">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span class="notif-type-tag ${notifClass}">${typeText}</span>
+                            <span class="notif-time">
+                                <i class="far fa-clock"></i> ${formatDate(notif.createdAt)}
+                            </span>
+                        </div>
+                        ${notif.isRead ? '' : `
+                        <button class="notif-action" data-notif-id="${notif.id}" onclick="event.stopPropagation(); markNotifRead(${notif.id})">
+                            <i class="fas fa-check"></i> 标记已读
+                        </button>
+                        `}
+                    </div>
+                </div>
+            `;
+            card.onclick = () => {
+                if (!notif.isRead) {
+                    markNotifRead(notif.id);
+                }
+            };
+            elements.notifList.appendChild(card);
+        });
+    }
+
+    window.markNotifRead = async (id) => {
+        if (!currentUser) return;
+        try {
+            const resp = await fetch('/api/mark_read', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, username: currentUser.username })
+            });
+            const data = await resp.json();
+            if (resp.ok && data.status === 'success') {
+                fetchNotifications();
+                fetchUnreadCount();
+            }
+        } catch (err) {
+            showToast('操作失败');
+        }
+    };
+
+    elements.markAllReadBtn.onclick = async () => {
+        if (!currentUser) return;
+        try {
+            const resp = await fetch('/api/mark_all_read', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: currentUser.username })
+            });
+            const data = await resp.json();
+            if (resp.ok && data.status === 'success') {
+                showToast(data.marked > 0 ? `已将 ${data.marked} 条消息标记为已读` : '没有未读消息');
+                fetchNotifications();
+                fetchUnreadCount();
+            }
+        } catch (err) {
+            showToast('操作失败');
+        }
+    };
+
+    elements.notifFilterBtns.forEach(btn => {
+        btn.onclick = () => {
+            elements.notifFilterBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            notifState.filter = btn.dataset.notifFilter;
+            fetchNotifications();
+        };
+    });
+
+    elements.notifTypeTabs.forEach(tab => {
+        tab.onclick = () => {
+            elements.notifTypeTabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            notifState.type = tab.dataset.notifType;
+            fetchNotifications();
+        };
+    });
 
     // Init
     updateUIForLogin();

@@ -11,9 +11,13 @@ extern int next_id;
 extern LostFound lostfound_list[MAX_LOSTFOUND];
 extern int lostfound_count;
 extern int lostfound_next_id;
+extern Notification notifications[MAX_NOTIFICATIONS];
+extern int notification_count;
+extern int notification_next_id;
 
 void save_data();
 void load_data();
 const char* get_user_real_name(const char *username);
+void create_notification(const char *username, const char *type, const char *title, const char *summary, const char *related_id);
 
 #endif

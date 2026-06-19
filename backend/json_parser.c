@@ -474,3 +474,73 @@ void get_lostfound_json(char *buf, const char *type_filter, const char *category
   }
   strcat(buf, "]");
 }
+
+typedef struct {
+  int index;
+  char created_at[32];
+} NotifSortItem;
+
+static int compare_notif_desc(const void *a, const void *b) {
+  const NotifSortItem *ia = (const NotifSortItem *)a;
+  const NotifSortItem *ib = (const NotifSortItem *)b;
+  return strcmp(ib->created_at, ia->created_at);
+}
+
+void get_notifications_json(char *buf, const char *username, int unread_only) {
+  char dec_user[50] = {0};
+  if (username && strlen(username) > 0)
+    url_decode(dec_user, username);
+
+  int matched[MAX_NOTIFICATIONS];
+  int match_count = 0;
+
+  for (int i = 0; i < notification_count; i++) {
+    if (strlen(dec_user) > 0 &&
+        strcmp(notifications[i].username, dec_user) != 0)
+      continue;
+    if (unread_only && notifications[i].is_read)
+      continue;
+    matched[match_count++] = i;
+  }
+
+  NotifSortItem sort_items[MAX_NOTIFICATIONS];
+  for (int i = 0; i < match_count; i++) {
+    sort_items[i].index = matched[i];
+    strcpy(sort_items[i].created_at, notifications[matched[i]].created_at);
+  }
+  qsort(sort_items, match_count, sizeof(NotifSortItem), compare_notif_desc);
+
+  strcat(buf, "[");
+  for (int i = 0; i < match_count; i++) {
+    if (i > 0)
+      strcat(buf, ",");
+    int idx = sort_items[i].index;
+    Notification *n = &notifications[idx];
+
+    char esc_title[200], esc_summary[600];
+    escape_json_string(esc_title, n->title, sizeof(esc_title));
+    escape_json_string(esc_summary, n->summary, sizeof(esc_summary));
+
+    char item[1024];
+    sprintf(item,
+            "{\"id\":%d,\"username\":\"%s\",\"type\":\"%s\",\"title\":\"%s\","
+            "\"summary\":\"%s\",\"relatedId\":\"%s\",\"isRead\":%d,"
+            "\"createdAt\":\"%s\"}",
+            n->id, n->username, n->type, esc_title, esc_summary,
+            n->related_id, n->is_read, n->created_at);
+    strcat(buf, item);
+  }
+  strcat(buf, "]");
+}
+
+int get_unread_notification_count(const char *username) {
+  if (!username || strlen(username) == 0) return 0;
+  int count = 0;
+  for (int i = 0; i < notification_count; i++) {
+    if (strcmp(notifications[i].username, username) == 0 &&
+        !notifications[i].is_read) {
+      count++;
+    }
+  }
+  return count;
+}

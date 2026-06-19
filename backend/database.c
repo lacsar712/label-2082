@@ -19,6 +19,9 @@ int notification_next_id = 1;
 Feedback feedbacks[MAX_FEEDBACK];
 int feedback_count = 0;
 int feedback_next_id = 1;
+WalletTransaction wallet_txns[MAX_WALLET_TXNS];
+int wallet_txn_count = 0;
+int wallet_txn_next_id = 1;
 
 const char* get_user_real_name(const char *username) {
   for (int i = 0; i < user_count; i++) {
@@ -51,6 +54,202 @@ void create_notification(const char *username, const char *type, const char *tit
 
   save_data();
   log_message(LOG_INFO, "Notification created for user %s: %s", username, n->title);
+}
+
+double get_user_balance(const char *username) {
+  for (int i = 0; i < user_count; i++) {
+    if (strcmp(users[i].username, username) == 0) {
+      return users[i].balance;
+    }
+  }
+  return 0.0;
+}
+
+int add_wallet_transaction(const char *username, const char *type, double amount,
+                            const char *description, const char *order_id,
+                            const char *remark) {
+  if (wallet_txn_count >= MAX_WALLET_TXNS) {
+    log_message(LOG_WARN, "Wallet transaction limit reached");
+    return -1;
+  }
+  if (!username || strlen(username) == 0 || amount <= 0) {
+    return -1;
+  }
+
+  int user_idx = -1;
+  for (int i = 0; i < user_count; i++) {
+    if (strcmp(users[i].username, username) == 0) {
+      user_idx = i;
+      break;
+    }
+  }
+  if (user_idx == -1) {
+    log_message(LOG_WARN, "User not found for wallet transaction: %s", username);
+    return -1;
+  }
+
+  if (strcmp(type, "expense") == 0) {
+    if (users[user_idx].balance < amount) {
+      log_message(LOG_WARN, "Insufficient balance for user %s", username);
+      return -2;
+    }
+    users[user_idx].balance -= amount;
+  } else if (strcmp(type, "income") == 0) {
+    users[user_idx].balance += amount;
+  } else {
+    return -1;
+  }
+
+  WalletTransaction *txn = &wallet_txns[wallet_txn_count++];
+  txn->id = wallet_txn_next_id++;
+  strncpy(txn->username, username, sizeof(txn->username) - 1);
+  strncpy(txn->type, type, sizeof(txn->type) - 1);
+  txn->amount = amount;
+  strncpy(txn->description, description ? description : "", sizeof(txn->description) - 1);
+  strncpy(txn->order_id, order_id ? order_id : "", sizeof(txn->order_id) - 1);
+  strncpy(txn->remark, remark ? remark : "", sizeof(txn->remark) - 1);
+
+  time_t t = time(NULL);
+  struct tm *tm_info = localtime(&t);
+  strftime(txn->created_at, sizeof(txn->created_at), "%Y-%m-%d %H:%M:%S", tm_info);
+
+  save_data();
+  log_message(LOG_INFO, "Wallet transaction created: user=%s type=%s amount=%.2f",
+              username, type, amount);
+  return txn->id;
+}
+
+int record_wallet_transaction(const char *username, const char *type, double amount,
+                               const char *description, const char *order_id,
+                               const char *remark) {
+  if (wallet_txn_count >= MAX_WALLET_TXNS) {
+    log_message(LOG_WARN, "Wallet transaction limit reached");
+    return -1;
+  }
+  if (!username || strlen(username) == 0 || amount <= 0) {
+    return -1;
+  }
+
+  WalletTransaction *txn = &wallet_txns[wallet_txn_count++];
+  txn->id = wallet_txn_next_id++;
+  strncpy(txn->username, username, sizeof(txn->username) - 1);
+  strncpy(txn->type, type, sizeof(txn->type) - 1);
+  txn->amount = amount;
+  strncpy(txn->description, description ? description : "", sizeof(txn->description) - 1);
+  strncpy(txn->order_id, order_id ? order_id : "", sizeof(txn->order_id) - 1);
+  strncpy(txn->remark, remark ? remark : "", sizeof(txn->remark) - 1);
+
+  time_t t = time(NULL);
+  struct tm *tm_info = localtime(&t);
+  strftime(txn->created_at, sizeof(txn->created_at), "%Y-%m-%d %H:%M:%S", tm_info);
+
+  save_data();
+  log_message(LOG_INFO, "Wallet transaction recorded (no balance change): user=%s type=%s amount=%.2f",
+              username, type, amount);
+  return txn->id;
+}
+
+static void escape_wallet_json(char *dst, const char *src, int max_len) {
+  int j = 0;
+  for (int i = 0; src[i] && j < max_len - 1; i++) {
+    if (src[i] == '"') {
+      dst[j++] = '\\';
+      dst[j++] = '"';
+    } else if (src[i] == '\\') {
+      dst[j++] = '\\';
+      dst[j++] = '\\';
+    } else if (src[i] == '\n') {
+      dst[j++] = '\\';
+      dst[j++] = 'n';
+    } else if (src[i] == '\r') {
+      dst[j++] = '\\';
+      dst[j++] = 'r';
+    } else {
+      dst[j++] = src[i];
+    }
+  }
+  dst[j] = '\0';
+}
+
+void get_wallet_txns_json(char *json, const char *username, const char *type_filter, const char *month) {
+  strcat(json, "[");
+  int first = 1;
+
+  for (int i = wallet_txn_count - 1; i >= 0; i--) {
+    if (username && strlen(username) > 0 &&
+        strcmp(wallet_txns[i].username, username) != 0)
+      continue;
+
+    if (type_filter && strlen(type_filter) > 0 &&
+        strcmp(type_filter, "all") != 0 &&
+        strcmp(wallet_txns[i].type, type_filter) != 0)
+      continue;
+
+    if (month && strlen(month) > 0 && strncmp(wallet_txns[i].created_at, month, 7) != 0)
+      continue;
+
+    if (!first)
+      strcat(json, ",");
+
+    char esc_desc[400], esc_remark[200], esc_order[40];
+    escape_wallet_json(esc_desc, wallet_txns[i].description, sizeof(esc_desc));
+    escape_wallet_json(esc_remark, wallet_txns[i].remark, sizeof(esc_remark));
+    escape_wallet_json(esc_order, wallet_txns[i].order_id, sizeof(esc_order));
+
+    char item[1024];
+    sprintf(item,
+            "{\"id\":%d,\"type\":\"%s\",\"amount\":%.2f,"
+            "\"description\":\"%s\",\"orderId\":\"%s\","
+            "\"remark\":\"%s\",\"createdAt\":\"%s\"}",
+            wallet_txns[i].id, wallet_txns[i].type, wallet_txns[i].amount,
+            esc_desc, esc_order, esc_remark, wallet_txns[i].created_at);
+    strcat(json, item);
+    first = 0;
+  }
+  strcat(json, "]");
+}
+
+void get_wallet_summary_json(char *json, const char *username) {
+  double balance = 0.0;
+  double total_income = 0.0;
+  double total_expense = 0.0;
+  double month_income = 0.0;
+  double month_expense = 0.0;
+
+  for (int i = 0; i < user_count; i++) {
+    if (strcmp(users[i].username, username) == 0) {
+      balance = users[i].balance;
+      break;
+    }
+  }
+
+  time_t t = time(NULL);
+  struct tm *tm_info = localtime(&t);
+  char current_month[8];
+  strftime(current_month, sizeof(current_month), "%Y-%m", tm_info);
+
+  for (int i = 0; i < wallet_txn_count; i++) {
+    if (strcmp(wallet_txns[i].username, username) != 0)
+      continue;
+
+    if (strcmp(wallet_txns[i].type, "income") == 0) {
+      total_income += wallet_txns[i].amount;
+      if (strncmp(wallet_txns[i].created_at, current_month, 7) == 0) {
+        month_income += wallet_txns[i].amount;
+      }
+    } else if (strcmp(wallet_txns[i].type, "expense") == 0) {
+      total_expense += wallet_txns[i].amount;
+      if (strncmp(wallet_txns[i].created_at, current_month, 7) == 0) {
+        month_expense += wallet_txns[i].amount;
+      }
+    }
+  }
+
+  sprintf(json,
+          "{\"balance\":%.2f,\"totalIncome\":%.2f,\"totalExpense\":%.2f,"
+          "\"monthIncome\":%.2f,\"monthExpense\":%.2f,\"currentMonth\":\"%s\"}",
+          balance, total_income, total_expense,
+          month_income, month_expense, current_month);
 }
 
 static void escape_feedback_json(char *dst, const char *src, int max_len) {
@@ -162,6 +361,17 @@ void save_data() {
     log_message(LOG_INFO, "Feedbacks data saved successfully");
   } else {
     log_message(LOG_ERROR, "Failed to save feedbacks data");
+  }
+
+  FILE *f6 = fopen("data_wallet.bin", "wb");
+  if (f6) {
+    fwrite(&wallet_txn_count, sizeof(int), 1, f6);
+    fwrite(&wallet_txn_next_id, sizeof(int), 1, f6);
+    fwrite(wallet_txns, sizeof(WalletTransaction), wallet_txn_count, f6);
+    fclose(f6);
+    log_message(LOG_INFO, "Wallet data saved successfully");
+  } else {
+    log_message(LOG_ERROR, "Failed to save wallet data");
   }
 }
 
@@ -287,6 +497,7 @@ static void seed_demo_data() {
       strcpy(users[user_count].password, "123456");
       strcpy(users[user_count].real_name, runner_names[i][1]);
       strcpy(users[user_count].major, runner_names[i][2]);
+      users[user_count].balance = 30.0 + (rand() % 50);
       user_count++;
       log_message(LOG_INFO, "Created demo user: %s", runner_names[i][0]);
     }
@@ -455,11 +666,23 @@ void load_data() {
     log_message(LOG_WARN, "No existing feedbacks data found");
   }
 
+  FILE *f6 = fopen("data_wallet.bin", "rb");
+  if (f6) {
+    fread(&wallet_txn_count, sizeof(int), 1, f6);
+    fread(&wallet_txn_next_id, sizeof(int), 1, f6);
+    fread(wallet_txns, sizeof(WalletTransaction), wallet_txn_count, f6);
+    fclose(f6);
+    log_message(LOG_INFO, "Loaded %d wallet transactions", wallet_txn_count);
+  } else {
+    log_message(LOG_WARN, "No existing wallet data found");
+  }
+
   if (user_count == 0) {
     strcpy(users[user_count].username, "admin");
     strcpy(users[user_count].password, "123456");
     strcpy(users[user_count].real_name, "张小凡");
     strcpy(users[user_count].major, "信安 2101");
+    users[user_count].balance = 50.0;
     user_count++;
     save_data();
     log_message(LOG_INFO, "Created default admin user");

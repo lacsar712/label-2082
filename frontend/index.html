@@ -77,6 +77,7 @@
                 <a href="#" class="nav-item" data-tab="stations"><i class="fas fa-map-marked-alt"></i> 驿站分布地图</a>
                 <a href="#" class="nav-item" data-tab="my-orders"><i class="fas fa-clipboard-list"></i> 我的订单</a>
                 <a href="#" class="nav-item" data-tab="post-task"><i class="fas fa-plus-circle"></i> 发布悬赏</a>
+                <a href="#" class="nav-item" data-tab="wallet"><i class="fas fa-wallet"></i> 我的钱包</a>
                 <a href="#" class="nav-item" data-tab="help"><i class="fas fa-question-circle"></i> 帮助中心</a>
                 <a href="#" class="nav-item" data-tab="profile"><i class="fas fa-user-circle"></i> 个人中心</a>
             </nav>
@@ -294,8 +295,79 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="form-group balance-deduction-group">
+                            <label class="balance-deduction-label">
+                                <input type="checkbox" id="pkg-use-balance">
+                                <span class="balance-deduction-text">
+                                    <i class="fas fa-wallet"></i> 使用余额抵扣
+                                    <span class="balance-available">（可用余额：¥ <span id="pkg-balance-available">0.00</span>）</span>
+                                </span>
+                            </label>
+                        </div>
                         <button type="submit" class="submit-btn">立即发布任务</button>
                     </form>
+                </div>
+            </section>
+
+            <!-- Wallet -->
+            <section class="view-section hidden" id="wallet-tab">
+                <div class="wallet-container">
+                    <div class="wallet-header-card">
+                        <div class="wallet-balance-section">
+                            <span class="wallet-label">账户余额（元）</span>
+                            <span class="wallet-balance" id="wallet-balance">0.00</span>
+                        </div>
+                        <div class="wallet-actions">
+                            <button class="wallet-action-btn"><i class="fas fa-plus-circle"></i> 充值</button>
+                            <button class="wallet-action-btn"><i class="fas fa-money-bill-wave"></i> 提现</button>
+                        </div>
+                    </div>
+
+                    <div class="wallet-summary-cards">
+                        <div class="wallet-summary-card income">
+                            <div class="ws-icon"><i class="fas fa-arrow-down"></i></div>
+                            <div class="ws-info">
+                                <span class="ws-label">累计收入</span>
+                                <span class="ws-value" id="wallet-total-income">0.00</span>
+                            </div>
+                        </div>
+                        <div class="wallet-summary-card expense">
+                            <div class="ws-icon"><i class="fas fa-arrow-up"></i></div>
+                            <div class="ws-info">
+                                <span class="ws-label">累计支出</span>
+                                <span class="ws-value" id="wallet-total-expense">0.00</span>
+                            </div>
+                        </div>
+                        <div class="wallet-summary-card month">
+                            <div class="ws-icon"><i class="fas fa-calendar-alt"></i></div>
+                            <div class="ws-info">
+                                <span class="ws-label">本月收支</span>
+                                <span class="ws-value">
+                                    <span class="ws-month-income" id="wallet-month-income">0.00</span>
+                                    /
+                                    <span class="ws-month-expense" id="wallet-month-expense">0.00</span>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="wallet-transactions-section">
+                        <div class="section-header">
+                            <h2><i class="fas fa-list-ul" style="color: var(--primary);"></i> 流水明细</h2>
+                            <div class="wallet-filters">
+                                <select id="wallet-month-filter" class="wallet-filter-select">
+                                    <option value="">全部时间</option>
+                                </select>
+                                <div class="wallet-type-tabs">
+                                    <button class="wallet-type-btn active" data-type="all">全部</button>
+                                    <button class="wallet-type-btn" data-type="income">收入</button>
+                                    <button class="wallet-type-btn" data-type="expense">支出</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="wallet-txn-list" id="wallet-txn-list">
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -324,6 +396,16 @@
                             <span class="p-val" id="stat-credit">98</span>
                             <span class="p-lab">信用分</span>
                         </div>
+                    </div>
+                    <div class="profile-wallet-card" onclick="document.querySelector('[data-tab=wallet]').click()">
+                        <div class="pw-left">
+                            <i class="fas fa-wallet"></i>
+                            <div>
+                                <span class="pw-label">我的钱包</span>
+                                <span class="pw-balance">¥ <span id="stat-balance">0.00</span></span>
+                            </div>
+                        </div>
+                        <i class="fas fa-chevron-right pw-arrow"></i>
                     </div>
                     <div class="profile-actions">
                         <button class="p-action-btn" id="edit-profile-btn"><i class="fas fa-edit"></i> 修改个人资料</button>

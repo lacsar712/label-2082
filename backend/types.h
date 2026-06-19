@@ -6,6 +6,7 @@
 #define MAX_LOSTFOUND 500
 #define MAX_NOTIFICATIONS 2000
 #define MAX_FEEDBACK 500
+#define MAX_WALLET_TXNS 2000
 #define BUFFER_SIZE 20480
 
 typedef struct {
@@ -13,7 +14,19 @@ typedef struct {
   char password[50];
   char real_name[50];
   char major[50];
+  double balance;
 } User;
+
+typedef struct {
+  int id;
+  char username[50];
+  char type[10];
+  double amount;
+  char description[200];
+  char order_id[20];
+  char remark[100];
+  char created_at[32];
+} WalletTransaction;
 
 typedef struct {
   int id;
@@ -27,6 +40,7 @@ typedef struct {
   char status[20];
   char created_at[32];
   int rating;
+  int use_balance_deduction;
 } Order;
 
 typedef struct {

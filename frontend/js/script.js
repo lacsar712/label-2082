@@ -23,6 +23,11 @@ document.addEventListener('DOMContentLoaded', () => {
         keyword: ''
     };
     let helpSearchTimer = null;
+    let walletState = {
+        type: 'all',
+        month: ''
+    };
+    let expandedTxnIds = new Set();
 
     const elements = {
         authOverlay: document.getElementById('auth-overlay'),
@@ -90,7 +95,19 @@ document.addEventListener('DOMContentLoaded', () => {
         supportCategory: document.getElementById('support-category'),
         supportTitle: document.getElementById('support-title'),
         supportDescription: document.getElementById('support-description'),
-        feedbackList: document.getElementById('feedback-list')
+        feedbackList: document.getElementById('feedback-list'),
+        walletBalance: document.getElementById('wallet-balance'),
+        walletTotalIncome: document.getElementById('wallet-total-income'),
+        walletTotalExpense: document.getElementById('wallet-total-expense'),
+        walletMonthIncome: document.getElementById('wallet-month-income'),
+        walletMonthExpense: document.getElementById('wallet-month-expense'),
+        walletTxnList: document.getElementById('wallet-txn-list'),
+        walletMonthFilter: document.getElementById('wallet-month-filter'),
+        walletTypeBtns: document.querySelectorAll('.wallet-type-btn'),
+        walletTab: document.querySelector('[data-tab="wallet"]'),
+        profileWalletCard: document.querySelector('.profile-wallet-card'),
+        pkgUseBalance: document.getElementById('pkg-use-balance'),
+        pkgBalanceAvailable: document.getElementById('pkg-balance-available')
     };
 
     // --- Authentication ---
@@ -103,6 +120,14 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.welcomeName.textContent = currentUser.realName;
             const pkgCustomerDisp = document.getElementById('pkg-customer-disp');
             if (pkgCustomerDisp) pkgCustomerDisp.textContent = currentUser.realName;
+
+            const statBalance = document.getElementById('stat-balance');
+            if (statBalance) {
+                statBalance.textContent = (currentUser.balance || 0).toFixed(2);
+            }
+            if (elements.pkgBalanceAvailable) {
+                elements.pkgBalanceAvailable.textContent = (currentUser.balance || 0).toFixed(2);
+            }
 
             startNotificationPolling();
             fetchUnreadCount();
@@ -227,6 +252,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 fetchNotifications();
                 fetchUnreadCount();
             }
+            if (tab === 'wallet') {
+                loadWalletSummary();
+                loadWalletTransactions();
+            }
         };
     });
 
@@ -326,12 +355,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // Post Order
     elements.orderForm.onsubmit = async (e) => {
         e.preventDefault();
+        const useBalance = document.getElementById('pkg-use-balance').checked;
+        const reward = parseFloat(document.getElementById('pkg-reward').value) || 0;
+        
+        if (useBalance && reward > (currentUser.balance || 0)) {
+            showToast('余额不足，无法使用余额抵扣');
+            return;
+        }
+        
         const payload = {
             package: document.getElementById('pkg-name').value,
             pickup: document.getElementById('pkg-pickup').value,
             delivery: document.getElementById('pkg-delivery').value,
             reward: document.getElementById('pkg-reward').value,
-            creator: currentUser.username
+            creator: currentUser.username,
+            useBalanceDeduction: useBalance
         };
         try {
             const resp = await fetch('/api/orders', {
@@ -393,6 +431,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Credit score stays at 98 (static)
             document.getElementById('stat-credit').textContent = '98';
+            
+            // Update balance display
+            const statBalance = document.getElementById('stat-balance');
+            if (statBalance) {
+                statBalance.textContent = (currentUser.balance || 0).toFixed(2);
+            }
         } catch (err) {
             console.error('Failed to load profile stats:', err);
         }
@@ -1750,6 +1794,166 @@ document.addEventListener('DOMContentLoaded', () => {
             if (marker) positionPopup(marker);
         }
     });
+
+    // --- Wallet Logic ---
+    async function loadWalletSummary() {
+        try {
+            const resp = await fetch(`/api/wallet/summary?username=${encodeURIComponent(currentUser.username)}`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            elements.walletBalance.textContent = data.balance.toFixed(2);
+            elements.walletTotalIncome.textContent = data.totalIncome.toFixed(2);
+            elements.walletTotalExpense.textContent = data.totalExpense.toFixed(2);
+            elements.walletMonthIncome.textContent = data.monthIncome.toFixed(2);
+            elements.walletMonthExpense.textContent = data.monthExpense.toFixed(2);
+            
+            currentUser.balance = data.balance;
+            localStorage.setItem('user', JSON.stringify(currentUser));
+            
+            const statBalance = document.getElementById('stat-balance');
+            if (statBalance) {
+                statBalance.textContent = data.balance.toFixed(2);
+            }
+            if (elements.pkgBalanceAvailable) {
+                elements.pkgBalanceAvailable.textContent = data.balance.toFixed(2);
+            }
+        } catch (err) {
+            console.error('Failed to load wallet summary:', err);
+        }
+    }
+
+    async function loadWalletTransactions() {
+        try {
+            let url = `/api/wallet/transactions?username=${encodeURIComponent(currentUser.username)}`;
+            if (walletState.type !== 'all') {
+                url += `&type=${walletState.type}`;
+            }
+            if (walletState.month) {
+                url += `&month=${walletState.month}`;
+            }
+            
+            const resp = await fetch(url);
+            if (!resp.ok) return;
+            const transactions = await resp.json();
+            renderWalletTransactions(transactions);
+            populateMonthFilter(transactions);
+        } catch (err) {
+            console.error('Failed to load wallet transactions:', err);
+        }
+    }
+
+    function renderWalletTransactions(transactions) {
+        if (!transactions || transactions.length === 0) {
+            elements.walletTxnList.innerHTML = `
+                <div class="wallet-empty">
+                    <i class="fas fa-wallet"></i>
+                    <h3>暂无流水记录</h3>
+                    <p>您的钱包还没有交易记录</p>
+                </div>
+            `;
+            return;
+        }
+
+        elements.walletTxnList.innerHTML = transactions.map(txn => {
+            const isExpanded = expandedTxnIds.has(txn.id);
+            const typeClass = txn.type === 'income' ? 'income' : 'expense';
+            const icon = txn.type === 'income' ? 'fa-arrow-down' : 'fa-arrow-up';
+            const sign = txn.type === 'income' ? '+' : '-';
+            
+            return `
+                <div class="wallet-txn-item ${typeClass} ${isExpanded ? 'expanded' : ''}" data-txn-id="${txn.id}">
+                    <div class="wallet-txn-icon"><i class="fas ${icon}"></i></div>
+                    <div class="wallet-txn-info">
+                        <div class="wallet-txn-desc">${txn.description}</div>
+                        <div class="wallet-txn-time">${txn.createdAt}</div>
+                    </div>
+                    <div class="wallet-txn-amount">${sign}${txn.amount.toFixed(2)}</div>
+                    <div class="wallet-txn-expand"><i class="fas fa-chevron-down"></i></div>
+                </div>
+                <div class="wallet-txn-detail" style="${isExpanded ? 'max-height: 200px; padding-bottom: 12px; padding-left: 60px; padding-right: 16px;' : ''}">
+                    <div class="wallet-txn-detail-row">
+                        <span class="wallet-txn-detail-label">交易类型</span>
+                        <span class="wallet-txn-detail-value">${txn.type === 'income' ? '收入' : '支出'}</span>
+                    </div>
+                    <div class="wallet-txn-detail-row">
+                        <span class="wallet-txn-detail-label">关联订单号</span>
+                        <span class="wallet-txn-detail-value">${txn.orderId || '-'}</span>
+                    </div>
+                    <div class="wallet-txn-detail-row">
+                        <span class="wallet-txn-detail-label">备注</span>
+                        <span class="wallet-txn-detail-value">${txn.remark || '-'}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        elements.walletTxnList.querySelectorAll('.wallet-txn-item').forEach(item => {
+            item.onclick = () => {
+                const txnId = parseInt(item.dataset.txnId);
+                if (expandedTxnIds.has(txnId)) {
+                    expandedTxnIds.delete(txnId);
+                } else {
+                    expandedTxnIds.add(txnId);
+                }
+                item.classList.toggle('expanded');
+                const detail = item.nextElementSibling;
+                if (detail && detail.classList.contains('wallet-txn-detail')) {
+                    if (item.classList.contains('expanded')) {
+                        detail.style.maxHeight = '200px';
+                        detail.style.paddingBottom = '12px';
+                        detail.style.paddingLeft = '60px';
+                        detail.style.paddingRight = '16px';
+                    } else {
+                        detail.style.maxHeight = '0';
+                        detail.style.paddingBottom = '0';
+                        detail.style.paddingLeft = '60px';
+                        detail.style.paddingRight = '16px';
+                    }
+                }
+            };
+        });
+    }
+
+    function populateMonthFilter(transactions) {
+        if (!transactions || transactions.length === 0) return;
+        
+        const months = new Set();
+        transactions.forEach(txn => {
+            if (txn.createdAt && txn.createdAt.length >= 7) {
+                months.add(txn.createdAt.substring(0, 7));
+            }
+        });
+        
+        const sortedMonths = Array.from(months).sort().reverse();
+        
+        const currentValue = walletState.month;
+        elements.walletMonthFilter.innerHTML = '<option value="">全部时间</option>' + 
+            sortedMonths.map(m => `<option value="${m}" ${m === currentValue ? 'selected' : ''}>${m.replace('-', '年')}月</option>`).join('');
+    }
+
+    if (elements.walletTypeBtns) {
+        elements.walletTypeBtns.forEach(btn => {
+            btn.onclick = () => {
+                elements.walletTypeBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                walletState.type = btn.dataset.type;
+                loadWalletTransactions();
+            };
+        });
+    }
+
+    if (elements.walletMonthFilter) {
+        elements.walletMonthFilter.onchange = () => {
+            walletState.month = elements.walletMonthFilter.value;
+            loadWalletTransactions();
+        };
+    }
+
+    if (elements.profileWalletCard) {
+        elements.profileWalletCard.onclick = () => {
+            document.querySelector('[data-tab="wallet"]').click();
+        };
+    }
 
     // Init
     updateUIForLogin();

@@ -74,8 +74,8 @@ static void handle_register(int client_socket, char *body) {
     snprintf(resp, sizeof(resp),
              "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
              "{\"status\":\"success\",\"username\":\"%s\",\"realName\":\"%s\","
-             "\"major\":\"%s\"}",
-             u.username, u.real_name, u.major);
+             "\"major\":\"%s\",\"balance\":%.2f}",
+             u.username, u.real_name, u.major, u.balance);
     send(client_socket, resp, strlen(resp), 0);
   } else {
     log_message(LOG_ERROR, "Registration failed: max users reached");
@@ -104,8 +104,9 @@ static void handle_login(int client_socket, char *body) {
     snprintf(resp, sizeof(resp),
              "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
              "{\"status\":\"success\",\"username\":\"%s\",\"realName\":\"%s\","
-             "\"major\":\"%s\"}",
-             users[found].username, users[found].real_name, users[found].major);
+             "\"major\":\"%s\",\"balance\":%.2f}",
+             users[found].username, users[found].real_name, users[found].major,
+             users[found].balance);
     send(client_socket, resp, strlen(resp), 0);
     log_message(LOG_INFO, "User logged in: %s", user);
   } else {
@@ -165,6 +166,7 @@ static void handle_create_order(int client_socket, char *body) {
   parse_json_string(body, "reward", new_order.reward, sizeof(new_order.reward));
   parse_json_string(body, "creator", new_order.creator,
                     sizeof(new_order.creator));
+  new_order.use_balance_deduction = parse_json_int(body, "useBalanceDeduction");
 
   if (strstr(new_order.pickup_addr, "菜鸟"))
     strcpy(new_order.category, "菜鸟");
@@ -246,6 +248,41 @@ static void handle_update_status(int client_socket, char *body) {
           snprintf(summary, sizeof(summary), "您的订单（%s）已完成，感谢使用校递快跑！",
                    orders[i].package_info);
           create_notification(orders[i].creator, "order", "订单已完成", summary, related_id);
+
+          if (strcmp(old_status, "completed") != 0 &&
+              strlen(orders[i].worker) > 0) {
+            double reward_amount = 0.0;
+            sscanf(orders[i].reward, "%lf", &reward_amount);
+            if (reward_amount > 0) {
+              char desc_income[200];
+              snprintf(desc_income, sizeof(desc_income),
+                       "跑腿收入：%s", orders[i].package_info);
+              char remark_income[100];
+              if (orders[i].use_balance_deduction) {
+                strcpy(remark_income, "余额结算收入");
+                add_wallet_transaction(orders[i].worker, "income", reward_amount,
+                                       desc_income, related_id, remark_income);
+              } else {
+                strcpy(remark_income, "线下结算收入");
+                record_wallet_transaction(orders[i].worker, "income", reward_amount,
+                                          desc_income, related_id, remark_income);
+              }
+
+              char desc_expense[200];
+              snprintf(desc_expense, sizeof(desc_expense),
+                       "发布悬赏：%s", orders[i].package_info);
+              char remark_expense[100];
+              if (orders[i].use_balance_deduction) {
+                strcpy(remark_expense, "余额抵扣支付");
+                add_wallet_transaction(orders[i].creator, "expense", reward_amount,
+                                       desc_expense, related_id, remark_expense);
+              } else {
+                strcpy(remark_expense, "线下支付");
+                record_wallet_transaction(orders[i].creator, "expense", reward_amount,
+                                          desc_expense, related_id, remark_expense);
+              }
+            }
+          }
         } else if (strcmp(new_status, "cancelled") == 0) {
           if (strlen(orders[i].worker) > 0) {
             snprintf(summary, sizeof(summary), "订单（%s）已被发布者撤回",
@@ -781,6 +818,100 @@ static void handle_get_stations(int client_socket) {
   log_message(LOG_INFO, "Stations fetched");
 }
 
+static void handle_get_wallet_summary(int client_socket, char *query_string) {
+  char username[50] = "";
+
+  if (query_string) {
+    char *u_ptr = strstr(query_string, "username=");
+    if (u_ptr) {
+      char decoded[50] = {0};
+      sscanf(u_ptr + 9, "%[^& ]", decoded);
+      strncpy(username, decoded, sizeof(username) - 1);
+    }
+  }
+
+  if (strlen(username) == 0) {
+    char response[] =
+        "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+        "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少username参数\"}";
+    send(client_socket, response, strlen(response), 0);
+    return;
+  }
+
+  char response_header[] =
+      "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+      "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(1024);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for wallet summary");
+    return;
+  }
+  memset(json, 0, 1024);
+  get_wallet_summary_json(json, username);
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "Wallet summary fetched - user:%s", username);
+}
+
+static void handle_get_wallet_txns(int client_socket, char *query_string) {
+  char username[50] = "";
+  char type_filter[20] = "all";
+  char month[20] = "";
+
+  if (query_string) {
+    char *u_ptr = strstr(query_string, "username=");
+    if (u_ptr) {
+      char decoded[50] = {0};
+      sscanf(u_ptr + 9, "%[^& ]", decoded);
+      strncpy(username, decoded, sizeof(username) - 1);
+    }
+    char *t_ptr = strstr(query_string, "type=");
+    if (t_ptr) {
+      char decoded[20] = {0};
+      sscanf(t_ptr + 5, "%[^& ]", decoded);
+      if (strcmp(decoded, "income") == 0 || strcmp(decoded, "expense") == 0 ||
+          strcmp(decoded, "all") == 0) {
+        strncpy(type_filter, decoded, sizeof(type_filter) - 1);
+      }
+    }
+    char *m_ptr = strstr(query_string, "month=");
+    if (m_ptr) {
+      char decoded[20] = {0};
+      sscanf(m_ptr + 6, "%[^& ]", decoded);
+      strncpy(month, decoded, sizeof(month) - 1);
+    }
+  }
+
+  if (strlen(username) == 0) {
+    char response[] =
+        "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+        "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少username参数\"}";
+    send(client_socket, response, strlen(response), 0);
+    return;
+  }
+
+  char response_header[] =
+      "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+      "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(MAX_WALLET_TXNS * 512);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for wallet txns");
+    return;
+  }
+  memset(json, 0, MAX_WALLET_TXNS * 512);
+  get_wallet_txns_json(json, username, type_filter, strlen(month) > 0 ? month : NULL);
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "Wallet transactions fetched - user:%s type:%s month:%s",
+              username, type_filter, month[0] ? month : "all");
+}
+
 void handle_request(int client_socket) {
   char buffer[BUFFER_SIZE];
   memset(buffer, 0, BUFFER_SIZE);
@@ -914,6 +1045,14 @@ void handle_request(int client_socket) {
     handle_get_feedback(client_socket, q);
   } else if (strstr(buffer, "GET /api/stations")) {
     handle_get_stations(client_socket);
+  } else if (strstr(buffer, "GET /api/wallet/summary")) {
+    char *path_start = strstr(buffer, "GET /api/wallet/summary");
+    char *q = strstr(path_start, "?");
+    handle_get_wallet_summary(client_socket, q);
+  } else if (strstr(buffer, "GET /api/wallet/transactions")) {
+    char *path_start = strstr(buffer, "GET /api/wallet/transactions");
+    char *q = strstr(path_start, "?");
+    handle_get_wallet_txns(client_socket, q);
   } else {
     log_message(LOG_WARN, "404 Not Found: %.50s", buffer);
     char response[] = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";

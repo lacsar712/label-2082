@@ -80,6 +80,7 @@
                 <a href="#" class="nav-item" data-tab="templates"><i class="fas fa-bookmark"></i> 模板库</a>
                 <a href="#" class="nav-item" data-tab="wallet"><i class="fas fa-wallet"></i> 我的钱包</a>
                 <a href="#" class="nav-item" data-tab="help"><i class="fas fa-question-circle"></i> 帮助中心</a>
+                <a href="#" class="nav-item hidden" data-tab="admin-reports" id="nav-admin-reports"><i class="fas fa-clipboard-check"></i> 工单管理</a>
                 <a href="#" class="nav-item" data-tab="profile"><i class="fas fa-user-circle"></i> 个人中心</a>
             </nav>
             <div class="sidebar-footer">
@@ -458,6 +459,13 @@
                         <button class="p-action-btn" id="account-sec-btn"><i class="fas fa-shield-alt"></i>
                             账户安全</button>
                     </div>
+                    <div class="report-records">
+                        <div class="section-header" style="margin-bottom: 16px;">
+                            <h3 style="font-size: 1.15rem; color: #0f172a;"><i class="fas fa-flag" style="color: #ef4444; margin-right: 8px;"></i>我的举报</h3>
+                        </div>
+                        <div class="my-reports-list" id="my-reports-list"></div>
+                    </div>
+
                     <div class="feedback-records">
                         <div class="section-header" style="margin-bottom: 16px;">
                             <h3 style="font-size: 1.15rem; color: #0f172a;"><i class="fas fa-comment-dots" style="color: var(--primary); margin-right: 8px;"></i>我的反馈记录</h3>
@@ -703,6 +711,34 @@
 
                 <div class="lf-masonry" id="lf-masonry"></div>
             </section>
+
+            <!-- Admin Reports Management -->
+            <section class="view-section hidden" id="admin-reports-tab">
+                <div class="section-header">
+                    <h2><i class="fas fa-clipboard-check" style="color: var(--primary);"></i> 工单管理中心</h2>
+                    <div class="reports-toolbar">
+                        <div class="reports-filter-wrap">
+                            <select id="admin-report-status-filter">
+                                <option value="all">全部状态</option>
+                                <option value="pending">待处理</option>
+                                <option value="processing">处理中</option>
+                                <option value="resolved">已处理</option>
+                                <option value="rejected">已驳回</option>
+                            </select>
+                            <select id="admin-report-type-filter">
+                                <option value="all">全部类型</option>
+                                <option value="fake">虚假订单</option>
+                                <option value="attitude">态度恶劣</option>
+                                <option value="damaged">物品损坏</option>
+                                <option value="other">其他</option>
+                            </select>
+                        </div>
+                        <button class="btn-primary" id="admin-reports-refresh"><i class="fas fa-sync-alt"></i> 刷新</button>
+                    </div>
+                </div>
+                <div class="reports-summary-cards" id="reports-summary-cards"></div>
+                <div class="admin-reports-list" id="admin-reports-list"></div>
+            </section>
         </main>
     </div>
 
@@ -875,6 +911,113 @@
                     <button type="button" class="btn-outline"
                         onclick="document.getElementById('security-modal').classList.add('hidden')">取消</button>
                     <button type="submit" class="btn-primary">确认修改</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Report Modal -->
+    <div id="report-modal" class="overlay hidden">
+        <div class="report-modal-card">
+            <div class="report-modal-header">
+                <h2><i class="fas fa-flag" style="color: #ef4444;"></i> 提交举报</h2>
+                <button class="modal-close-btn" onclick="document.getElementById('report-modal').classList.add('hidden')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="report-form" class="report-modal-body">
+                <input type="hidden" id="report-order-id">
+                <input type="hidden" id="report-target-user">
+                <div class="form-group">
+                    <label>举报类型 <span style="color: #ef4444;">*</span></label>
+                    <div class="report-type-options">
+                        <label class="report-type-option">
+                            <input type="radio" name="reportType" value="fake" required>
+                            <div class="report-type-label">
+                                <i class="fas fa-exclamation-triangle" style="color: #f59e0b;"></i>
+                                <span>虚假订单</span>
+                            </div>
+                        </label>
+                        <label class="report-type-option">
+                            <input type="radio" name="reportType" value="attitude">
+                            <div class="report-type-label">
+                                <i class="fas fa-angry" style="color: #ef4444;"></i>
+                                <span>态度恶劣</span>
+                            </div>
+                        </label>
+                        <label class="report-type-option">
+                            <input type="radio" name="reportType" value="damaged">
+                            <div class="report-type-label">
+                                <i class="fas fa-box-open" style="color: #8b5cf6;"></i>
+                                <span>物品损坏</span>
+                            </div>
+                        </label>
+                        <label class="report-type-option">
+                            <input type="radio" name="reportType" value="other">
+                            <div class="report-type-label">
+                                <i class="fas fa-ellipsis-h" style="color: #64748b;"></i>
+                                <span>其他</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>关联订单号</label>
+                    <input type="text" id="report-order-display" placeholder="如：订单 #123" readonly>
+                </div>
+                <div class="form-group">
+                    <label>详细描述 <span style="color: #ef4444;">*</span> <span style="color: #94a3b8; font-size: 0.85rem;">(最多500字)</span></label>
+                    <textarea id="report-description" rows="5" placeholder="请详细描述举报内容，包括时间、地点、事件经过等信息，便于我们核实处理" maxlength="500" required></textarea>
+                </div>
+                <div style="display:flex; gap:12px; margin-top:10px;">
+                    <button type="button" class="btn-outline" style="flex:1;"
+                        onclick="document.getElementById('report-modal').classList.add('hidden')">取消</button>
+                    <button type="submit" class="btn-primary" style="flex:1; background: #ef4444;"><i class="fas fa-paper-plane"></i> 提交举报</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Admin Report Handle Modal -->
+    <div id="admin-report-modal" class="overlay hidden">
+        <div class="report-modal-card">
+            <div class="report-modal-header">
+                <h2><i class="fas fa-clipboard-check" style="color: var(--primary);"></i> 处理工单</h2>
+                <button class="modal-close-btn" onclick="document.getElementById('admin-report-modal').classList.add('hidden')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="admin-report-form" class="report-modal-body">
+                <input type="hidden" id="admin-report-id">
+                <div class="admin-report-info">
+                    <div class="admin-report-info-row"><span class="ari-label">工单编号：</span><span class="ari-value" id="ari-id">-</span></div>
+                    <div class="admin-report-info-row"><span class="ari-label">举报类型：</span><span class="ari-value" id="ari-type">-</span></div>
+                    <div class="admin-report-info-row"><span class="ari-label">举报人：</span><span class="ari-value" id="ari-reporter">-</span></div>
+                    <div class="admin-report-info-row"><span class="ari-label">被举报用户：</span><span class="ari-value" id="ari-target">-</span></div>
+                    <div class="admin-report-info-row"><span class="ari-label">关联订单：</span><span class="ari-value" id="ari-order">-</span></div>
+                    <div class="admin-report-info-row"><span class="ari-label">提交时间：</span><span class="ari-value" id="ari-time">-</span></div>
+                </div>
+                <div class="form-group">
+                    <label>举报内容</label>
+                    <div id="ari-desc" class="admin-report-desc">-</div>
+                </div>
+                <div class="form-group">
+                    <label>工单状态</label>
+                    <select id="admin-report-status">
+                        <option value="pending">待处理</option>
+                        <option value="processing">处理中</option>
+                        <option value="resolved">已处理</option>
+                        <option value="rejected">已驳回</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>处理意见 <span style="color: #94a3b8; font-size: 0.85rem;">(最多500字)</span></label>
+                    <textarea id="admin-report-note" rows="4" placeholder="请填写处理意见，将同步通知举报人" maxlength="500"></textarea>
+                </div>
+                <div style="display:flex; gap:12px; margin-top:10px;">
+                    <button type="button" class="btn-outline" style="flex:1;"
+                        onclick="document.getElementById('admin-report-modal').classList.add('hidden')">取消</button>
+                    <button type="submit" class="btn-primary" style="flex:1;"><i class="fas fa-check"></i> 提交处理</button>
                 </div>
             </form>
         </div>

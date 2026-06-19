@@ -23,6 +23,9 @@ extern int wallet_txn_next_id;
 extern TaskTemplate templates[MAX_TEMPLATES];
 extern int template_count;
 extern int template_next_id;
+extern Report reports[MAX_REPORTS];
+extern int report_count;
+extern int report_next_id;
 
 void save_data();
 void load_data();
@@ -43,5 +46,12 @@ int update_template(int id, const char *creator, const char *template_name, cons
                     const char *pickup_addr, const char *delivery_addr, const char *reward);
 int delete_template(int id, const char *creator);
 int set_default_template(int id, const char *creator);
+
+void get_reports_json(char *json, const char *reporter);
+void get_all_reports_json(char *json, const char *status_filter, const char *type_filter);
+int create_report(const char *reporter, const char *report_type, const char *description,
+                  const char *order_id, const char *target_user);
+int update_report_status(int id, const char *status, const char *handler_note);
+Report* find_report_by_id(int id);
 
 #endif

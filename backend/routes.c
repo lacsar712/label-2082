@@ -1066,6 +1066,197 @@ static void handle_set_default_template(int client_socket, char *body) {
   send(client_socket, response, strlen(response), 0);
 }
 
+static void handle_create_report(int client_socket, char *body) {
+  char reporter[50] = "", report_type[20] = "";
+  char description[1000] = "", order_id[20] = "", target_user[50] = "";
+
+  parse_json_string(body, "reporter", reporter, sizeof(reporter));
+  parse_json_string(body, "reportType", report_type, sizeof(report_type));
+  parse_json_string(body, "description", description, sizeof(description));
+  parse_json_string(body, "orderId", order_id, sizeof(order_id));
+  parse_json_string(body, "targetUser", target_user, sizeof(target_user));
+
+  if (strlen(reporter) == 0 || strlen(report_type) == 0) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少必填字段\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  int id = create_report(reporter, report_type, description,
+                         strlen(order_id) > 0 ? order_id : NULL,
+                         strlen(target_user) > 0 ? target_user : NULL);
+  if (id > 0) {
+    char resp[256];
+    snprintf(resp, sizeof(resp),
+             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+             "{\"status\":\"success\",\"id\":%d}",
+             id);
+    send(client_socket, resp, strlen(resp), 0);
+  } else {
+    char resp[] = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"创建举报工单失败\"}";
+    send(client_socket, resp, strlen(resp), 0);
+  }
+}
+
+static void handle_get_reports(int client_socket, char *query_string) {
+  char reporter[50] = "";
+
+  if (query_string) {
+    char *r_ptr = strstr(query_string, "reporter=");
+    if (r_ptr) {
+      char decoded[50] = {0};
+      sscanf(r_ptr + 9, "%[^& ]", decoded);
+      strncpy(reporter, decoded, sizeof(reporter) - 1);
+    }
+  }
+
+  if (strlen(reporter) == 0) {
+    char response[] =
+        "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+        "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少reporter参数\"}";
+    send(client_socket, response, strlen(response), 0);
+    return;
+  }
+
+  char response_header[] =
+      "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+      "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(MAX_REPORTS * 2048);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for reports JSON");
+    return;
+  }
+  memset(json, 0, MAX_REPORTS * 2048);
+  get_reports_json(json, reporter);
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "Reports fetched - reporter:%s", reporter);
+}
+
+static void handle_get_all_reports(int client_socket, char *query_string) {
+  char status_filter[20] = "all", type_filter[20] = "all";
+  char username[50] = "";
+
+  if (query_string) {
+    char *s_ptr = strstr(query_string, "status=");
+    if (s_ptr) {
+      char decoded[20] = {0};
+      sscanf(s_ptr + 7, "%[^& ]", decoded);
+      strncpy(status_filter, decoded, sizeof(status_filter) - 1);
+    }
+    char *t_ptr = strstr(query_string, "type=");
+    if (t_ptr) {
+      char decoded[20] = {0};
+      sscanf(t_ptr + 5, "%[^& ]", decoded);
+      strncpy(type_filter, decoded, sizeof(type_filter) - 1);
+    }
+    char *u_ptr = strstr(query_string, "username=");
+    if (u_ptr) {
+      char decoded[50] = {0};
+      sscanf(u_ptr + 9, "%[^& ]", decoded);
+      strncpy(username, decoded, sizeof(username) - 1);
+    }
+  }
+
+  if (strlen(username) == 0) {
+    char response[] =
+        "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+        "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少username参数\"}";
+    send(client_socket, response, strlen(response), 0);
+    return;
+  }
+
+  int is_admin = 0;
+  for (int i = 0; i < user_count; i++) {
+    if (strcmp(users[i].username, username) == 0) {
+      if (strcmp(username, "admin") == 0) {
+        is_admin = 1;
+      }
+      break;
+    }
+  }
+
+  if (!is_admin) {
+    char response[] =
+        "HTTP/1.1 403 Forbidden\r\nContent-Type: "
+        "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"无权限访问\"}";
+    send(client_socket, response, strlen(response), 0);
+    log_message(LOG_WARN, "Non-admin user %s tried to access all reports", username);
+    return;
+  }
+
+  char response_header[] =
+      "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+      "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(MAX_REPORTS * 2048);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for all reports JSON");
+    return;
+  }
+  memset(json, 0, MAX_REPORTS * 2048);
+  get_all_reports_json(json, status_filter, type_filter);
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "All reports fetched by admin - status:%s type:%s",
+              status_filter, type_filter);
+}
+
+static void handle_update_report(int client_socket, char *body) {
+  int id = parse_json_int(body, "id");
+  char username[50] = "", status[20] = "", handler_note[500] = "";
+
+  parse_json_string(body, "username", username, sizeof(username));
+  parse_json_string(body, "status", status, sizeof(status));
+  parse_json_string(body, "handlerNote", handler_note, sizeof(handler_note));
+
+  if (id == -1 || strlen(username) == 0) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少必填字段\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  int is_admin = 0;
+  for (int i = 0; i < user_count; i++) {
+    if (strcmp(users[i].username, username) == 0) {
+      if (strcmp(username, "admin") == 0) {
+        is_admin = 1;
+      }
+      break;
+    }
+  }
+
+  if (!is_admin) {
+    char response[] =
+        "HTTP/1.1 403 Forbidden\r\nContent-Type: "
+        "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"无权限操作\"}";
+    send(client_socket, response, strlen(response), 0);
+    log_message(LOG_WARN, "Non-admin user %s tried to update report %d", username, id);
+    return;
+  }
+
+  int result = update_report_status(id,
+                                    strlen(status) > 0 ? status : NULL,
+                                    strlen(handler_note) > 0 ? handler_note : NULL);
+  if (result == 0) {
+    char response[] = "HTTP/1.1 200 OK\r\nContent-Type: "
+                      "application/json\r\n\r\n{\"status\":\"success\"}";
+    send(client_socket, response, strlen(response), 0);
+  } else {
+    char resp[] = "HTTP/1.1 404 Not Found\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"工单不存在\"}";
+    send(client_socket, resp, strlen(resp), 0);
+  }
+}
+
 void handle_request(int client_socket) {
   char buffer[BUFFER_SIZE];
   memset(buffer, 0, BUFFER_SIZE);
@@ -1234,6 +1425,26 @@ void handle_request(int client_socket) {
     if (body) {
       body += 4;
       handle_set_default_template(client_socket, body);
+    }
+  } else if (strstr(buffer, "POST /api/reports")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_create_report(client_socket, body);
+    }
+  } else if (strstr(buffer, "GET /api/reports")) {
+    char *path_start = strstr(buffer, "GET /api/reports");
+    char *q = strstr(path_start, "?");
+    handle_get_reports(client_socket, q);
+  } else if (strstr(buffer, "GET /api/reports/all")) {
+    char *path_start = strstr(buffer, "GET /api/reports/all");
+    char *q = strstr(path_start, "?");
+    handle_get_all_reports(client_socket, q);
+  } else if (strstr(buffer, "POST /api/reports_update")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_update_report(client_socket, body);
     }
   } else {
     log_message(LOG_WARN, "404 Not Found: %.50s", buffer);

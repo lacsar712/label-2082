@@ -142,7 +142,31 @@ document.addEventListener('DOMContentLoaded', () => {
         templatesSortSelect: document.getElementById('templates-sort-select'),
         btnCreateTemplateFromLib: document.getElementById('btn-create-template-from-lib'),
         defaultTemplateBanner: document.getElementById('default-template-banner'),
-        defaultTemplateName: document.getElementById('default-template-name')
+        defaultTemplateName: document.getElementById('default-template-name'),
+        navAdminReports: document.getElementById('nav-admin-reports'),
+        reportModal: document.getElementById('report-modal'),
+        reportForm: document.getElementById('report-form'),
+        reportOrderId: document.getElementById('report-order-id'),
+        reportTargetUser: document.getElementById('report-target-user'),
+        reportDescription: document.getElementById('report-description'),
+        myReportsList: document.getElementById('my-reports-list'),
+        adminReportsList: document.getElementById('admin-reports-list'),
+        adminReportsSummary: document.getElementById('reports-summary-cards'),
+        adminReportStatusFilter: document.getElementById('admin-report-status-filter'),
+        adminReportTypeFilter: document.getElementById('admin-report-type-filter'),
+        adminReportRefreshBtn: document.getElementById('admin-reports-refresh'),
+        adminReportModal: document.getElementById('admin-report-modal'),
+        adminReportForm: document.getElementById('admin-report-form'),
+        adminReportId: document.getElementById('admin-report-id'),
+        adminReportDetailId: document.getElementById('ari-id'),
+        adminReportDetailType: document.getElementById('ari-type'),
+        adminReportDetailReporter: document.getElementById('ari-reporter'),
+        adminReportDetailTarget: document.getElementById('ari-target'),
+        adminReportDetailOrder: document.getElementById('ari-order'),
+        adminReportDetailTime: document.getElementById('ari-time'),
+        adminReportDetailDesc: document.getElementById('ari-desc'),
+        adminReportStatus: document.getElementById('admin-report-status'),
+        adminReportHandlerNote: document.getElementById('admin-report-note')
     };
 
     // --- Authentication ---
@@ -167,11 +191,18 @@ document.addEventListener('DOMContentLoaded', () => {
             startNotificationPolling();
             fetchUnreadCount();
 
+            if (currentUser.username === 'admin' && elements.navAdminReports) {
+                elements.navAdminReports.classList.remove('hidden');
+            } else if (elements.navAdminReports) {
+                elements.navAdminReports.classList.add('hidden');
+            }
+
             document.querySelector('[data-tab="dashboard"]').click();
         } else {
             stopNotificationPolling();
             elements.authOverlay.classList.remove('hidden');
             elements.mainApp.classList.add('hidden');
+            if (elements.navAdminReports) elements.navAdminReports.classList.add('hidden');
         }
     }
 
@@ -274,6 +305,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (tab === 'profile') {
                 loadProfile();
                 loadUserFeedbacks();
+                loadUserReports();
+            }
+            if (tab === 'admin-reports') {
+                fetchAdminReports();
             }
             if (tab === 'leaderboard') fetchLeaderboard();
             if (tab === 'lostfound') fetchLostFound();
@@ -362,6 +397,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     ${isMyOrders && myOrdersView === 'created' && order.status === 'pending' ?
                     `<button class="btn-outline" style="color: #ef4444;" onclick="updateStatus(${order.id}, 'cancelled')"><i class="fas fa-undo"></i> 撤回发布</button>` : ''}
+
+                    ${order.status !== 'pending' && order.creator !== currentUser.username ?
+                    `<button class="order-report-btn" onclick="openReportModal(${order.id}, '${order.creator}')"><i class="fas fa-flag"></i> 举报</button>` : ''}
+                    ${isMyOrders && myOrdersView === 'created' && (order.status === 'accepted' || order.status === 'delivered' || order.status === 'completed') && order.worker ?
+                    `<button class="order-report-btn" onclick="openReportModal(${order.id}, '${order.worker}')"><i class="fas fa-flag"></i> 举报</button>` : ''}
+                    ${isMyOrders && myOrdersView === 'accepted' && (order.status === 'delivered' || order.status === 'completed') ?
+                    `<button class="order-report-btn" onclick="openReportModal(${order.id}, '${order.creator}')"><i class="fas fa-flag"></i> 举报</button>` : ''}
                 </div>
             `;
             container.appendChild(card);
@@ -2529,6 +2571,354 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.selectTemplateModal.classList.add('hidden');
         showToast(`已使用模板「${tpl.templateName}」`);
     };
+
+    // --- Reports (投诉与举报工单) Logic ---
+
+    window.openReportModal = (orderId, targetUser) => {
+        if (!elements.reportModal) return;
+        elements.reportForm.reset();
+        if (elements.reportOrderId) elements.reportOrderId.value = orderId || '';
+        if (elements.reportTargetUser) elements.reportTargetUser.value = targetUser || '';
+        const orderDisplay = document.getElementById('report-order-display');
+        if (orderDisplay && orderId) orderDisplay.value = `订单 #${orderId}`;
+        else if (orderDisplay) orderDisplay.value = '';
+        elements.reportModal.classList.remove('hidden');
+    };
+
+    if (elements.reportModal) {
+        const closeBtns = elements.reportModal.querySelectorAll('[data-close-modal]');
+        closeBtns.forEach(btn => {
+            btn.onclick = () => elements.reportModal.classList.add('hidden');
+        });
+        elements.reportModal.onclick = (e) => {
+            if (e.target === elements.reportModal) elements.reportModal.classList.add('hidden');
+        };
+    }
+
+    if (elements.reportForm) {
+        elements.reportForm.onsubmit = async (e) => {
+            e.preventDefault();
+            const typeRadio = document.querySelector('input[name="reportType"]:checked');
+            if (!typeRadio) {
+                showToast('请选择举报类型');
+                return;
+            }
+            const description = elements.reportDescription ? elements.reportDescription.value.trim() : '';
+            if (!description) {
+                showToast('请填写详细描述');
+                return;
+            }
+
+            const payload = {
+                reporter: currentUser.username,
+                report_type: typeRadio.value,
+                description: description,
+                order_id: elements.reportOrderId ? elements.reportOrderId.value : '',
+                target_user: elements.reportTargetUser ? elements.reportTargetUser.value : ''
+            };
+
+            try {
+                const resp = await fetch('/api/reports', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await resp.json();
+                if (resp.ok && data.status === 'success') {
+                    showToast(`举报提交成功！工单号：${data.report_id}`);
+                    elements.reportModal.classList.add('hidden');
+                    elements.reportForm.reset();
+                    if (!document.getElementById('profile-tab').classList.contains('hidden')) {
+                        loadUserReports();
+                    }
+                } else {
+                    showToast(data.message || '举报提交失败');
+                }
+            } catch (err) {
+                showToast('举报提交失败');
+            }
+        };
+    }
+
+    async function loadUserReports() {
+        if (!elements.myReportsList || !currentUser) return;
+        try {
+            const resp = await fetch(`/api/reports?reporter=${encodeURIComponent(currentUser.username)}`);
+            const reports = await resp.json();
+            renderMyReports(reports);
+        } catch (err) {
+            console.error('Failed to load user reports:', err);
+        }
+    }
+
+    function renderMyReports(reports) {
+        if (!elements.myReportsList) return;
+
+        if (!reports || reports.length === 0) {
+            elements.myReportsList.innerHTML = `
+                <div style="text-align:center; padding:30px 20px; color:#94a3b8;">
+                    <i class="fas fa-inbox" style="font-size:2rem; margin-bottom:10px;"></i>
+                    <div>暂无举报记录</div>
+                </div>
+            `;
+            return;
+        }
+
+        const typeTextMap = {
+            'fake': '虚假订单',
+            'attitude': '态度恶劣',
+            'damaged': '物品损坏',
+            'other': '其他'
+        };
+        const statusTextMap = {
+            'pending': '待处理',
+            'processing': '处理中',
+            'resolved': '已处理',
+            'rejected': '已驳回'
+        };
+
+        elements.myReportsList.innerHTML = reports.map(r => `
+            <div class="my-report-item">
+                <div class="my-report-header">
+                    <div class="my-report-title">
+                        <span class="report-badge ${r.report_type}">${typeTextMap[r.report_type] || r.report_type}</span>
+                        <span class="my-report-id">#${r.id}</span>
+                    </div>
+                    <span class="report-status ${r.status}">${statusTextMap[r.status] || r.status}</span>
+                </div>
+                <div class="my-report-desc">${escapeHtml(r.description)}</div>
+                <div class="my-report-meta">
+                    <span><i class="fas fa-hashtag"></i> 订单号: ${r.order_id || '-'}</span>
+                    <span><i class="fas fa-user"></i> 被举报: ${escapeHtml(r.target_user || '-')}</span>
+                    <span><i class="far fa-clock"></i> ${formatDate(r.created_at)}</span>
+                </div>
+                ${r.handler_note ? `
+                <div class="my-report-handler-note">
+                    <div class="mhrn-label"><i class="fas fa-comment-dots"></i> 处理备注</div>
+                    <div class="mhrn-content">${escapeHtml(r.handler_note)}</div>
+                    ${r.handled_at ? `<div class="mhrn-time">处理时间: ${formatDate(r.handled_at)}</div>` : ''}
+                </div>
+                ` : ''}
+            </div>
+        `).join('');
+    }
+
+    async function fetchAdminReports() {
+        if (!elements.adminReportsList) return;
+        try {
+            const params = new URLSearchParams();
+            if (elements.adminReportStatusFilter && elements.adminReportStatusFilter.value) {
+                params.append('status', elements.adminReportStatusFilter.value);
+            }
+            if (elements.adminReportTypeFilter && elements.adminReportTypeFilter.value) {
+                params.append('type', elements.adminReportTypeFilter.value);
+            }
+            params.append('username', currentUser.username);
+
+            const resp = await fetch(`/api/reports/all?${params.toString()}`);
+            if (!resp.ok) {
+                const err = await resp.json();
+                showToast(err.message || '加载工单失败');
+                return;
+            }
+            const reports = await resp.json();
+            renderAdminReports(reports);
+            updateAdminReportStats(reports);
+        } catch (err) {
+            console.error('Failed to fetch admin reports:', err);
+            showToast('加载工单失败');
+        }
+    }
+
+    function updateAdminReportStats(reports) {
+        if (!elements.adminReportsSummary) return;
+
+        const total = reports.length;
+        const pending = reports.filter(r => r.status === 'pending').length;
+        const processing = reports.filter(r => r.status === 'processing').length;
+        const resolved = reports.filter(r => r.status === 'resolved' || r.status === 'rejected').length;
+
+        elements.adminReportsSummary.innerHTML = `
+            <div class="reports-summary-card all">
+                <div class="rsc-icon"><i class="fas fa-clipboard-list"></i></div>
+                <div class="rsc-info">
+                    <div class="rsc-value">${total}</div>
+                    <div class="rsc-label">工单总数</div>
+                </div>
+            </div>
+            <div class="reports-summary-card pending">
+                <div class="rsc-icon"><i class="fas fa-clock"></i></div>
+                <div class="rsc-info">
+                    <div class="rsc-value">${pending}</div>
+                    <div class="rsc-label">待处理</div>
+                </div>
+            </div>
+            <div class="reports-summary-card processing">
+                <div class="rsc-icon"><i class="fas fa-spinner fa-spin"></i></div>
+                <div class="rsc-info">
+                    <div class="rsc-value">${processing}</div>
+                    <div class="rsc-label">处理中</div>
+                </div>
+            </div>
+            <div class="reports-summary-card resolved">
+                <div class="rsc-icon"><i class="fas fa-check-circle"></i></div>
+                <div class="rsc-info">
+                    <div class="rsc-value">${resolved}</div>
+                    <div class="rsc-label">已处理</div>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderAdminReports(reports) {
+        if (!elements.adminReportsList) return;
+
+        if (!reports || reports.length === 0) {
+            elements.adminReportsList.innerHTML = `
+                <div style="text-align:center; padding:50px 20px; color:#94a3b8;">
+                    <i class="fas fa-inbox" style="font-size:3rem; margin-bottom:15px;"></i>
+                    <h3>暂无工单</h3>
+                    <p>当前筛选条件下没有工单</p>
+                </div>
+            `;
+            return;
+        }
+
+        const typeTextMap = {
+            'fake': '虚假订单',
+            'attitude': '态度恶劣',
+            'damaged': '物品损坏',
+            'other': '其他'
+        };
+        const statusTextMap = {
+            'pending': '待处理',
+            'processing': '处理中',
+            'resolved': '已处理',
+            'rejected': '已驳回'
+        };
+
+        elements.adminReportsList.innerHTML = reports.map(r => `
+            <div class="admin-report-item">
+                <div class="admin-report-header">
+                    <div class="admin-report-title-row">
+                        <span class="report-badge ${r.report_type}">${typeTextMap[r.report_type] || r.report_type}</span>
+                        <span class="admin-report-id">#${r.id}</span>
+                    </div>
+                    <span class="report-status ${r.status}">${statusTextMap[r.status] || r.status}</span>
+                </div>
+                <div class="admin-report-info">
+                    <div class="ari-row">
+                        <span class="ari-label">举报人</span>
+                        <span class="ari-value">${escapeHtml(r.reporter)}</span>
+                    </div>
+                    <div class="ari-row">
+                        <span class="ari-label">被举报</span>
+                        <span class="ari-value">${escapeHtml(r.target_user || '-')}</span>
+                    </div>
+                    <div class="ari-row">
+                        <span class="ari-label">关联订单</span>
+                        <span class="ari-value">#${r.order_id || '-'}</span>
+                    </div>
+                    <div class="ari-row">
+                        <span class="ari-label">提交时间</span>
+                        <span class="ari-value">${formatDate(r.created_at)}</span>
+                    </div>
+                </div>
+                <div class="admin-report-desc">
+                    <div class="ard-label">举报详情</div>
+                    <div class="ard-content">${escapeHtml(r.description)}</div>
+                </div>
+                ${r.handler_note ? `
+                <div class="admin-report-handler-note">
+                    <div class="ard-label">处理备注</div>
+                    <div class="ard-content">${escapeHtml(r.handler_note)}</div>
+                    ${r.handled_at ? `<div class="ard-time">处理于 ${formatDate(r.handled_at)}</div>` : ''}
+                </div>
+                ` : ''}
+                <div class="admin-report-actions">
+                    <button class="btn-primary" onclick='openAdminReportModal(${JSON.stringify(r).replace(/'/g, "&#39;")})'>
+                        <i class="fas fa-edit"></i> 处理工单
+                    </button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    window.openAdminReportModal = (report) => {
+        if (!elements.adminReportModal || !report) return;
+
+        const typeTextMap = {
+            'fake': '虚假订单',
+            'attitude': '态度恶劣',
+            'damaged': '物品损坏',
+            'other': '其他'
+        };
+
+        if (elements.adminReportId) elements.adminReportId.value = report.id;
+        if (elements.adminReportDetailId) elements.adminReportDetailId.textContent = `#${report.id}`;
+        if (elements.adminReportDetailReporter) elements.adminReportDetailReporter.textContent = report.reporter;
+        if (elements.adminReportDetailTarget) elements.adminReportDetailTarget.textContent = report.target_user || '-';
+        if (elements.adminReportDetailType) elements.adminReportDetailType.textContent = typeTextMap[report.report_type] || report.report_type;
+        if (elements.adminReportDetailOrder) elements.adminReportDetailOrder.textContent = report.order_id ? `#${report.order_id}` : '-';
+        if (elements.adminReportDetailDesc) elements.adminReportDetailDesc.textContent = report.description;
+        if (elements.adminReportDetailTime) elements.adminReportDetailTime.textContent = formatDate(report.created_at);
+        if (elements.adminReportStatus) elements.adminReportStatus.value = report.status;
+        if (elements.adminReportHandlerNote) elements.adminReportHandlerNote.value = report.handler_note || '';
+
+        elements.adminReportModal.classList.remove('hidden');
+    };
+
+    if (elements.adminReportModal) {
+        const closeBtns = elements.adminReportModal.querySelectorAll('[data-close-modal]');
+        closeBtns.forEach(btn => {
+            btn.onclick = () => elements.adminReportModal.classList.add('hidden');
+        });
+        elements.adminReportModal.onclick = (e) => {
+            if (e.target === elements.adminReportModal) elements.adminReportModal.classList.add('hidden');
+        };
+    }
+
+    if (elements.adminReportForm) {
+        elements.adminReportForm.onsubmit = async (e) => {
+            e.preventDefault();
+            const id = parseInt(elements.adminReportId.value);
+            const status = elements.adminReportStatus ? elements.adminReportStatus.value : '';
+            const handler_note = elements.adminReportHandlerNote ? elements.adminReportHandlerNote.value.trim() : '';
+
+            if (!status) {
+                showToast('请选择处理状态');
+                return;
+            }
+
+            try {
+                const resp = await fetch('/api/reports_update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, status, handler_note, username: currentUser.username })
+                });
+                const data = await resp.json();
+                if (resp.ok && data.status === 'success') {
+                    showToast('工单处理成功');
+                    elements.adminReportModal.classList.add('hidden');
+                    fetchAdminReports();
+                } else {
+                    showToast(data.message || '处理失败');
+                }
+            } catch (err) {
+                showToast('处理失败');
+            }
+        };
+    }
+
+    if (elements.adminReportStatusFilter) {
+        elements.adminReportStatusFilter.onchange = () => fetchAdminReports();
+    }
+    if (elements.adminReportTypeFilter) {
+        elements.adminReportTypeFilter.onchange = () => fetchAdminReports();
+    }
+    if (elements.adminReportRefreshBtn) {
+        elements.adminReportRefreshBtn.onclick = () => fetchAdminReports();
+    }
 
     // Init
     updateUIForLogin();

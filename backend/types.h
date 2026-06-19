@@ -8,6 +8,7 @@
 #define MAX_FEEDBACK 500
 #define MAX_WALLET_TXNS 2000
 #define MAX_TEMPLATES 100
+#define MAX_REPORTS 500
 #define BUFFER_SIZE 20480
 
 typedef struct {
@@ -92,5 +93,19 @@ typedef struct {
   char created_at[32];
   char updated_at[32];
 } TaskTemplate;
+
+typedef struct {
+  int id;
+  char reporter[50];
+  char report_type[20];
+  char description[1000];
+  char order_id[20];
+  char target_user[50];
+  char status[20];
+  char handler_note[500];
+  char created_at[32];
+  char updated_at[32];
+  char handled_at[32];
+} Report;
 
 #endif

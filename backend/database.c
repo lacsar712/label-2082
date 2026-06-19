@@ -25,6 +25,9 @@ int wallet_txn_next_id = 1;
 TaskTemplate templates[MAX_TEMPLATES];
 int template_count = 0;
 int template_next_id = 1;
+Report reports[MAX_REPORTS];
+int report_count = 0;
+int report_next_id = 1;
 
 const char* get_user_real_name(const char *username) {
   for (int i = 0; i < user_count; i++) {
@@ -386,6 +389,17 @@ void save_data() {
     log_message(LOG_INFO, "Templates data saved successfully");
   } else {
     log_message(LOG_ERROR, "Failed to save templates data");
+  }
+
+  FILE *f8 = fopen("data_reports.bin", "wb");
+  if (f8) {
+    fwrite(&report_count, sizeof(int), 1, f8);
+    fwrite(&report_next_id, sizeof(int), 1, f8);
+    fwrite(reports, sizeof(Report), report_count, f8);
+    fclose(f8);
+    log_message(LOG_INFO, "Reports data saved successfully");
+  } else {
+    log_message(LOG_ERROR, "Failed to save reports data");
   }
 }
 
@@ -884,6 +898,17 @@ void load_data() {
     log_message(LOG_WARN, "No existing templates data found");
   }
 
+  FILE *f8 = fopen("data_reports.bin", "rb");
+  if (f8) {
+    fread(&report_count, sizeof(int), 1, f8);
+    fread(&report_next_id, sizeof(int), 1, f8);
+    fread(reports, sizeof(Report), report_count, f8);
+    fclose(f8);
+    log_message(LOG_INFO, "Loaded %d reports", report_count);
+  } else {
+    log_message(LOG_WARN, "No existing reports data found");
+  }
+
   if (user_count == 0) {
     strcpy(users[user_count].username, "admin");
     strcpy(users[user_count].password, "123456");
@@ -898,4 +923,188 @@ void load_data() {
   seed_demo_data();
   seed_lostfound_demo_data();
   backfill_order_data();
+}
+
+static void escape_report_json(char *dst, const char *src, int max_len) {
+  int j = 0;
+  for (int i = 0; src[i] && j < max_len - 1; i++) {
+    if (src[i] == '"') {
+      dst[j++] = '\\';
+      dst[j++] = '"';
+    } else if (src[i] == '\\') {
+      dst[j++] = '\\';
+      dst[j++] = '\\';
+    } else if (src[i] == '\n') {
+      dst[j++] = '\\';
+      dst[j++] = 'n';
+    } else if (src[i] == '\r') {
+      dst[j++] = '\\';
+      dst[j++] = 'r';
+    } else if (src[i] == '\t') {
+      dst[j++] = '\\';
+      dst[j++] = 't';
+    } else {
+      dst[j++] = src[i];
+    }
+  }
+  dst[j] = '\0';
+}
+
+void get_reports_json(char *json, const char *reporter) {
+  strcat(json, "[");
+  int first = 1;
+
+  for (int i = report_count - 1; i >= 0; i--) {
+    if (reporter && strlen(reporter) > 0 &&
+        strcmp(reports[i].reporter, reporter) != 0)
+      continue;
+
+    if (!first)
+      strcat(json, ",");
+
+    char esc_desc[2000], esc_note[1000];
+    escape_report_json(esc_desc, reports[i].description, sizeof(esc_desc));
+    escape_report_json(esc_note, reports[i].handler_note, sizeof(esc_note));
+
+    char item[4096];
+    sprintf(item,
+            "{\"id\":%d,\"reporter\":\"%s\",\"reportType\":\"%s\","
+            "\"description\":\"%s\",\"orderId\":\"%s\",\"targetUser\":\"%s\","
+            "\"status\":\"%s\",\"handlerNote\":\"%s\","
+            "\"createdAt\":\"%s\",\"updatedAt\":\"%s\",\"handledAt\":\"%s\"}",
+            reports[i].id, reports[i].reporter, reports[i].report_type,
+            esc_desc, reports[i].order_id, reports[i].target_user,
+            reports[i].status, esc_note,
+            reports[i].created_at, reports[i].updated_at, reports[i].handled_at);
+    strcat(json, item);
+    first = 0;
+  }
+  strcat(json, "]");
+}
+
+void get_all_reports_json(char *json, const char *status_filter, const char *type_filter) {
+  strcat(json, "[");
+  int first = 1;
+
+  for (int i = report_count - 1; i >= 0; i--) {
+    if (status_filter && strlen(status_filter) > 0 &&
+        strcmp(status_filter, "all") != 0 &&
+        strcmp(reports[i].status, status_filter) != 0)
+      continue;
+
+    if (type_filter && strlen(type_filter) > 0 &&
+        strcmp(type_filter, "all") != 0 &&
+        strcmp(reports[i].report_type, type_filter) != 0)
+      continue;
+
+    if (!first)
+      strcat(json, ",");
+
+    char esc_desc[2000], esc_note[1000];
+    escape_report_json(esc_desc, reports[i].description, sizeof(esc_desc));
+    escape_report_json(esc_note, reports[i].handler_note, sizeof(esc_note));
+
+    char item[4096];
+    sprintf(item,
+            "{\"id\":%d,\"reporter\":\"%s\",\"reportType\":\"%s\","
+            "\"description\":\"%s\",\"orderId\":\"%s\",\"targetUser\":\"%s\","
+            "\"status\":\"%s\",\"handlerNote\":\"%s\","
+            "\"createdAt\":\"%s\",\"updatedAt\":\"%s\",\"handledAt\":\"%s\"}",
+            reports[i].id, reports[i].reporter, reports[i].report_type,
+            esc_desc, reports[i].order_id, reports[i].target_user,
+            reports[i].status, esc_note,
+            reports[i].created_at, reports[i].updated_at, reports[i].handled_at);
+    strcat(json, item);
+    first = 0;
+  }
+  strcat(json, "]");
+}
+
+int create_report(const char *reporter, const char *report_type, const char *description,
+                  const char *order_id, const char *target_user) {
+  if (report_count >= MAX_REPORTS) {
+    log_message(LOG_WARN, "Report limit reached");
+    return -1;
+  }
+  if (!reporter || strlen(reporter) == 0 || !report_type || strlen(report_type) == 0) {
+    return -1;
+  }
+
+  Report *r = &reports[report_count++];
+  r->id = report_next_id++;
+  strncpy(r->reporter, reporter, sizeof(r->reporter) - 1);
+  strncpy(r->report_type, report_type, sizeof(r->report_type) - 1);
+  strncpy(r->description, description ? description : "", sizeof(r->description) - 1);
+  strncpy(r->order_id, order_id ? order_id : "", sizeof(r->order_id) - 1);
+  strncpy(r->target_user, target_user ? target_user : "", sizeof(r->target_user) - 1);
+  strcpy(r->status, "pending");
+  r->handler_note[0] = '\0';
+
+  time_t t = time(NULL);
+  struct tm *tm_info = localtime(&t);
+  strftime(r->created_at, sizeof(r->created_at), "%Y-%m-%d %H:%M:%S", tm_info);
+  strcpy(r->updated_at, r->created_at);
+  r->handled_at[0] = '\0';
+
+  save_data();
+  log_message(LOG_INFO, "Report created: ID=%d by %s type=%s", r->id, reporter, report_type);
+  return r->id;
+}
+
+int update_report_status(int id, const char *status, const char *handler_note) {
+  for (int i = 0; i < report_count; i++) {
+    if (reports[i].id == id) {
+      char old_status[20];
+      strcpy(old_status, reports[i].status);
+
+      if (status && strlen(status) > 0) {
+        strncpy(reports[i].status, status, sizeof(reports[i].status) - 1);
+      }
+      if (handler_note && strlen(handler_note) > 0) {
+        strncpy(reports[i].handler_note, handler_note, sizeof(reports[i].handler_note) - 1);
+      }
+
+      time_t t = time(NULL);
+      struct tm *tm_info = localtime(&t);
+      strftime(reports[i].updated_at, sizeof(reports[i].updated_at),
+               "%Y-%m-%d %H:%M:%S", tm_info);
+
+      if (strcmp(status, "handled") == 0 || strcmp(status, "resolved") == 0 ||
+          strcmp(status, "closed") == 0 || strcmp(status, "completed") == 0) {
+        strftime(reports[i].handled_at, sizeof(reports[i].handled_at),
+                 "%Y-%m-%d %H:%M:%S", tm_info);
+      }
+
+      save_data();
+      log_message(LOG_INFO, "Report %d status updated: %s -> %s", id, old_status, status);
+
+      char related_id[20];
+      snprintf(related_id, sizeof(related_id), "%d", id);
+      char summary[500];
+      if (strcmp(status, "processing") == 0) {
+        snprintf(summary, sizeof(summary), "您的举报工单（#%d）已受理，正在处理中", id);
+        create_notification(reports[i].reporter, "report", "举报工单已受理", summary, related_id);
+      } else if (strcmp(status, "resolved") == 0 || strcmp(status, "completed") == 0 ||
+                 strcmp(status, "handled") == 0) {
+        snprintf(summary, sizeof(summary), "您的举报工单（#%d）已处理完成，查看处理详情", id);
+        create_notification(reports[i].reporter, "report", "举报工单已处理", summary, related_id);
+      } else if (strcmp(status, "rejected") == 0) {
+        snprintf(summary, sizeof(summary), "您的举报工单（#%d）未能通过审核，查看详情了解原因", id);
+        create_notification(reports[i].reporter, "report", "举报工单已驳回", summary, related_id);
+      }
+
+      return 0;
+    }
+  }
+  log_message(LOG_WARN, "Report not found for update: ID=%d", id);
+  return -1;
+}
+
+Report* find_report_by_id(int id) {
+  for (int i = 0; i < report_count; i++) {
+    if (reports[i].id == id) {
+      return &reports[i];
+    }
+  }
+  return NULL;
 }

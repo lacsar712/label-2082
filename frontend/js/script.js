@@ -168,7 +168,16 @@ document.addEventListener('DOMContentLoaded', () => {
         adminReportDetailTime: document.getElementById('ari-time'),
         adminReportDetailDesc: document.getElementById('ari-desc'),
         adminReportStatus: document.getElementById('admin-report-status'),
-        adminReportHandlerNote: document.getElementById('admin-report-note')
+        adminReportHandlerNote: document.getElementById('admin-report-note'),
+        shareCodeInput: document.getElementById('share-code-input'),
+        shareCodeSearchBtn: document.getElementById('share-code-search-btn'),
+        shareCodeModal: document.getElementById('share-code-modal'),
+        shareCodeDisplayText: document.getElementById('share-code-display-text'),
+        shareCodeExpiry: document.getElementById('share-code-expiry'),
+        shareCodeCopyBtn: document.getElementById('share-code-copy-btn'),
+        shareCodeGenerateBtn: document.getElementById('share-code-generate-btn'),
+        shareCodeShareText: document.getElementById('share-code-share-text'),
+        shareCodeCopyShareBtn: document.getElementById('share-code-copy-share-btn')
     };
 
     // --- Authentication ---
@@ -372,6 +381,7 @@ document.addEventListener('DOMContentLoaded', () => {
         orders.forEach(order => {
             const card = document.createElement('div');
             card.className = `order-card ${order.status}`;
+            card.dataset.orderId = order.id;
 
             const statusMap = { 'pending': '待接单', 'accepted': '进行中', 'delivered': '待收货', 'completed': '已完成', 'cancelled': '已撤回' };
 
@@ -398,7 +408,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     `<button class="btn-primary" style="background:var(--accent);color:#fff" onclick="updateStatus(${order.id}, 'completed')">确认收货并支付 / 评价</button>` : ''}
 
                     ${isMyOrders && myOrdersView === 'created' && order.status === 'pending' ?
-                    `<button class="btn-outline" style="color: #ef4444;" onclick="updateStatus(${order.id}, 'cancelled')"><i class="fas fa-undo"></i> 撤回发布</button>` : ''}
+                    `<div style="display: flex; gap: 8px; width: 100%;">
+                        <button class="order-share-btn" onclick="openShareCodeModal(${order.id})" style="flex: 1;"><i class="fas fa-share-alt"></i> 分享口令</button>
+                        <button class="btn-outline" style="color: #ef4444; flex: 1;" onclick="updateStatus(${order.id}, 'cancelled')"><i class="fas fa-undo"></i> 撤回发布</button>
+                    </div>` : ''}
 
                     ${order.status !== 'pending' && order.creator !== currentUser.username ?
                     `<button class="order-report-btn" onclick="openReportModal(${order.id}, '${order.creator}')"><i class="fas fa-flag"></i> 举报</button>` : ''}
@@ -498,6 +511,229 @@ document.addEventListener('DOMContentLoaded', () => {
                 loadBadges();
             }
         } catch (err) { showToast('操作失败'); }
+    };
+
+    // --- Share Code ---
+    let currentShareCodeOrderId = null;
+    let highlightTimer = null;
+
+    async function generateShareCode(orderId) {
+        try {
+            const resp = await fetch('/api/share_code/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ creator: currentUser.username, orderId: orderId })
+            });
+            const data = await resp.json();
+            if (data.status === 'success') {
+                return data.code;
+            } else {
+                showToast(data.message || '生成分享口令失败');
+                return null;
+            }
+        } catch (err) {
+            showToast('生成分享口令失败');
+            return null;
+        }
+    }
+
+    async function verifyShareCode(code) {
+        try {
+            const resp = await fetch('/api/share_code/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: code.toUpperCase() })
+            });
+            const data = await resp.json();
+            if (data.status === 'success') {
+                return { success: true, orderId: data.orderId, message: data.message };
+            } else {
+                return { success: false, message: data.message };
+            }
+        } catch (err) {
+            return { success: false, message: '验证失败，请重试' };
+        }
+    }
+
+    function copyToClipboard(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(text);
+        } else {
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            textArea.style.top = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                const successful = document.execCommand('copy');
+                document.body.removeChild(textArea);
+                return successful ? Promise.resolve() : Promise.reject();
+            } catch (err) {
+                document.body.removeChild(textArea);
+                return Promise.reject(err);
+            }
+        }
+    }
+
+    function formatTimeRemaining(seconds) {
+        if (seconds <= 0) return '已过期';
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        if (hours > 0) {
+            return `${hours}小时${minutes}分钟`;
+        } else {
+            return `${minutes}分钟`;
+        }
+    }
+
+    function generateShareText(orderInfo, code) {
+        if (!orderInfo) {
+            return `我在「校递快跑」发布了一个悬赏任务，分享口令：${code}，打开校递快跑输入口令即可快速找到并接单~`;
+        }
+        return `我在「校递快跑」发布了一个悬赏任务：${orderInfo.package}\n悬赏：${orderInfo.reward}\n取件：${orderInfo.pickup}\n送达：${orderInfo.delivery}\n分享口令：${code}\n打开校递快跑输入口令即可快速找到并接单~`;
+    }
+
+    async function getOrderById(orderId) {
+        try {
+            const resp = await fetch('/api/orders');
+            const orders = await resp.json();
+            return orders.find(o => o.id === orderId) || null;
+        } catch (err) {
+            return null;
+        }
+    }
+
+    async function openShareCodeModal(orderId) {
+        currentShareCodeOrderId = orderId;
+        elements.shareCodeModal.classList.remove('hidden');
+        elements.shareCodeDisplayText.textContent = '生成中...';
+        elements.shareCodeShareText.textContent = '加载中...';
+
+        const orderInfo = await getOrderById(orderId);
+        const code = await generateShareCode(orderId);
+
+        if (code) {
+            elements.shareCodeDisplayText.textContent = code;
+            const shareText = generateShareText(orderInfo, code);
+            elements.shareCodeShareText.textContent = shareText;
+
+            try {
+                const resp = await fetch(`/api/share_code?creator=${encodeURIComponent(currentUser.username)}&orderId=${orderId}`);
+                const data = await resp.json();
+                if (data.exists && data.expiresInSeconds) {
+                    elements.shareCodeExpiry.innerHTML = `<i class="fas fa-clock"></i> 有效期：${formatTimeRemaining(data.expiresInSeconds)}`;
+                }
+            } catch (e) {
+                elements.shareCodeExpiry.innerHTML = '<i class="fas fa-clock"></i> 有效期：24小时';
+            }
+        } else {
+            elements.shareCodeDisplayText.textContent = '------';
+            elements.shareCodeShareText.textContent = '生成失败，请重试';
+        }
+    }
+
+    window.openShareCodeModal = openShareCodeModal;
+
+    async function searchByShareCode() {
+        const code = elements.shareCodeInput.value.trim();
+        if (!code || code.length !== 6) {
+            showToast('请输入6位分享口令');
+            return;
+        }
+
+        const result = await verifyShareCode(code);
+        if (result.success) {
+            document.querySelector('[data-tab="dashboard"]').click();
+            setTimeout(() => {
+                scrollToAndHighlightOrder(result.orderId);
+            }, 300);
+            showToast('口令验证成功，已定位到目标订单');
+        } else {
+            showToast(result.message || '口令无效');
+        }
+    }
+
+    function scrollToAndHighlightOrder(orderId) {
+        const card = document.querySelector(`.order-card[data-order-id="${orderId}"]`);
+        if (!card) {
+            fetchOrders().then(() => {
+                const newCard = document.querySelector(`.order-card[data-order-id="${orderId}"]`);
+                if (newCard) {
+                    doHighlight(newCard);
+                }
+            });
+            return;
+        }
+        doHighlight(card);
+    }
+
+    function doHighlight(card) {
+        if (highlightTimer) {
+            clearTimeout(highlightTimer);
+            document.querySelectorAll('.order-card.highlight').forEach(c => c.classList.remove('highlight'));
+        }
+
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        setTimeout(() => {
+            card.classList.add('highlight');
+        }, 300);
+
+        highlightTimer = setTimeout(() => {
+            card.classList.remove('highlight');
+            highlightTimer = null;
+        }, 5000);
+    }
+
+    elements.shareCodeSearchBtn.onclick = searchByShareCode;
+    elements.shareCodeInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            searchByShareCode();
+        }
+    });
+    elements.shareCodeInput.addEventListener('input', (e) => {
+        e.target.value = e.target.value.toUpperCase();
+    });
+
+    elements.shareCodeCopyBtn.onclick = async () => {
+        const code = elements.shareCodeDisplayText.textContent;
+        if (code && code !== '------' && code !== '生成中...') {
+            try {
+                await copyToClipboard(code);
+                showToast('口令已复制到剪贴板');
+            } catch (err) {
+                showToast('复制失败，请手动复制');
+            }
+        }
+    };
+
+    elements.shareCodeGenerateBtn.onclick = async () => {
+        if (currentShareCodeOrderId) {
+            elements.shareCodeDisplayText.textContent = '生成中...';
+            const code = await generateShareCode(currentShareCodeOrderId);
+            if (code) {
+                elements.shareCodeDisplayText.textContent = code;
+                const orderInfo = await getOrderById(currentShareCodeOrderId);
+                const shareText = generateShareText(orderInfo, code);
+                elements.shareCodeShareText.textContent = shareText;
+                showToast('新口令已生成');
+            }
+        }
+    };
+
+    elements.shareCodeCopyShareBtn.onclick = async () => {
+        const text = elements.shareCodeShareText.textContent;
+        if (text && text !== '加载中...' && text !== '生成失败，请重试') {
+            try {
+                await copyToClipboard(text);
+                showToast('分享文案已复制');
+            } catch (err) {
+                showToast('复制失败，请手动复制');
+            }
+        }
     };
 
     // --- Profile ---

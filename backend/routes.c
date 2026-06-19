@@ -1293,6 +1293,116 @@ static void handle_get_badges(int client_socket, char *query_string) {
   log_message(LOG_INFO, "Badges fetched for user: %s", username);
 }
 
+static void handle_generate_share_code(int client_socket, char *body) {
+  char creator[50] = "";
+  int order_id = -1;
+
+  parse_json_string(body, "creator", creator, sizeof(creator));
+  char *id_ptr = strstr(body, "\"orderId\":");
+  if (id_ptr) sscanf(id_ptr + 10, "%d", &order_id);
+
+  if (strlen(creator) == 0 || order_id == -1) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少必填字段\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  char code[8];
+  int result = generate_share_code(creator, order_id, code);
+
+  if (result > 0) {
+    char resp[512];
+    snprintf(resp, sizeof(resp),
+             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+             "{\"status\":\"success\",\"code\":\"%s\",\"orderId\":%d}",
+             code, order_id);
+    send(client_socket, resp, strlen(resp), 0);
+    log_message(LOG_INFO, "Share code generated: %s for order %d by %s", code, order_id, creator);
+  } else if (result == -2) {
+    char resp[] = "HTTP/1.1 403 Forbidden\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"无权限操作\"}";
+    send(client_socket, resp, strlen(resp), 0);
+  } else if (result == -3) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"仅待接单订单可生成分享口令\"}";
+    send(client_socket, resp, strlen(resp), 0);
+  } else {
+    char resp[] = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"生成失败\"}";
+    send(client_socket, resp, strlen(resp), 0);
+  }
+}
+
+static void handle_verify_share_code(int client_socket, char *body) {
+  char code[10] = "";
+  parse_json_string(body, "code", code, sizeof(code));
+
+  if (strlen(code) == 0) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"请输入口令\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  int order_id = -1;
+  char message[100] = "";
+  int result = verify_share_code(code, &order_id, message);
+
+  if (result == 0) {
+    char resp[512];
+    snprintf(resp, sizeof(resp),
+             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+             "{\"status\":\"success\",\"orderId\":%d,\"message\":\"%s\"}",
+             order_id, message);
+    send(client_socket, resp, strlen(resp), 0);
+    log_message(LOG_INFO, "Share code verified: %s -> order %d", code, order_id);
+  } else {
+    char resp[512];
+    snprintf(resp, sizeof(resp),
+             "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\n\r\n"
+             "{\"status\":\"error\",\"message\":\"%s\"}",
+             message);
+    send(client_socket, resp, strlen(resp), 0);
+    log_message(LOG_WARN, "Share code verification failed: %s - %s", code, message);
+  }
+}
+
+static void handle_get_share_code(int client_socket, char *query_string) {
+  char creator[50] = "";
+  int order_id = -1;
+
+  if (query_string) {
+    char *c_ptr = strstr(query_string, "creator=");
+    if (c_ptr) sscanf(c_ptr + 8, "%[^& ]", creator);
+    char *o_ptr = strstr(query_string, "orderId=");
+    if (o_ptr) sscanf(o_ptr + 8, "%d", &order_id);
+  }
+
+  if (strlen(creator) == 0 || order_id == -1) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少参数\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  char response_header[] = "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+                           "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(1024);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for share code JSON");
+    return;
+  }
+  memset(json, 0, 1024);
+  get_share_code_by_order_json(json, order_id, creator);
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "Share code fetched - order:%d creator:%s", order_id, creator);
+}
+
 void handle_request(int client_socket) {
   char buffer[BUFFER_SIZE];
   memset(buffer, 0, BUFFER_SIZE);
@@ -1486,6 +1596,22 @@ void handle_request(int client_socket) {
     char *path_start = strstr(buffer, "GET /api/badges");
     char *q = strstr(path_start, "?");
     handle_get_badges(client_socket, q);
+  } else if (strstr(buffer, "POST /api/share_code/generate")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_generate_share_code(client_socket, body);
+    }
+  } else if (strstr(buffer, "POST /api/share_code/verify")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_verify_share_code(client_socket, body);
+    }
+  } else if (strstr(buffer, "GET /api/share_code")) {
+    char *path_start = strstr(buffer, "GET /api/share_code");
+    char *q = strstr(path_start, "?");
+    handle_get_share_code(client_socket, q);
   } else {
     log_message(LOG_WARN, "404 Not Found: %.50s", buffer);
     char response[] = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";

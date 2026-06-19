@@ -11,6 +11,7 @@
 #define MAX_REPORTS 500
 #define MAX_BADGES 1000
 #define MAX_BADGE_TYPES 20
+#define MAX_SHARE_CODES 500
 #define BUFFER_SIZE 20480
 
 typedef struct {
@@ -116,5 +117,15 @@ typedef struct {
   char badge_key[50];
   char unlocked_at[32];
 } Badge;
+
+typedef struct {
+  int id;
+  char code[8];
+  int order_id;
+  char creator[50];
+  char created_at[32];
+  char expires_at[32];
+  int is_valid;
+} ShareCode;
 
 #endif

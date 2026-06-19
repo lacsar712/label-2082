@@ -31,6 +31,9 @@ int report_next_id = 1;
 Badge badges[MAX_BADGES];
 int badge_count = 0;
 int badge_next_id = 1;
+ShareCode share_codes[MAX_SHARE_CODES];
+int share_code_count = 0;
+int share_code_next_id = 1;
 
 const char* get_user_real_name(const char *username) {
   for (int i = 0; i < user_count; i++) {
@@ -414,6 +417,17 @@ void save_data() {
     log_message(LOG_INFO, "Badges data saved successfully");
   } else {
     log_message(LOG_ERROR, "Failed to save badges data");
+  }
+
+  FILE *f10 = fopen("data_share_codes.bin", "wb");
+  if (f10) {
+    fwrite(&share_code_count, sizeof(int), 1, f10);
+    fwrite(&share_code_next_id, sizeof(int), 1, f10);
+    fwrite(share_codes, sizeof(ShareCode), share_code_count, f10);
+    fclose(f10);
+    log_message(LOG_INFO, "Share codes data saved successfully");
+  } else {
+    log_message(LOG_ERROR, "Failed to save share codes data");
   }
 }
 
@@ -934,6 +948,17 @@ void load_data() {
     log_message(LOG_WARN, "No existing badges data found");
   }
 
+  FILE *f10 = fopen("data_share_codes.bin", "rb");
+  if (f10) {
+    fread(&share_code_count, sizeof(int), 1, f10);
+    fread(&share_code_next_id, sizeof(int), 1, f10);
+    fread(share_codes, sizeof(ShareCode), share_code_count, f10);
+    fclose(f10);
+    log_message(LOG_INFO, "Loaded %d share codes", share_code_count);
+  } else {
+    log_message(LOG_WARN, "No existing share codes data found");
+  }
+
   if (user_count == 0) {
     strcpy(users[user_count].username, "admin");
     strcpy(users[user_count].password, "123456");
@@ -1274,4 +1299,235 @@ void get_badges_json(char *json, const char *username) {
   }
 
   strcat(json, "]");
+}
+
+static void generate_random_code(char *out, int length) {
+  const char chars[] = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  int chars_len = strlen(chars);
+  for (int i = 0; i < length; i++) {
+    out[i] = chars[rand() % chars_len];
+  }
+  out[length] = '\0';
+}
+
+static int is_code_unique(const char *code) {
+  for (int i = 0; i < share_code_count; i++) {
+    if (strcmp(share_codes[i].code, code) == 0 && share_codes[i].is_valid) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+static int parse_datetime(const char *datetime_str, time_t *out_time) {
+  struct tm tm_info;
+  memset(&tm_info, 0, sizeof(struct tm));
+  if (sscanf(datetime_str, "%d-%d-%d %d:%d:%d",
+             &tm_info.tm_year, &tm_info.tm_mon, &tm_info.tm_mday,
+             &tm_info.tm_hour, &tm_info.tm_min, &tm_info.tm_sec) != 6) {
+    return -1;
+  }
+  tm_info.tm_year -= 1900;
+  tm_info.tm_mon -= 1;
+  *out_time = mktime(&tm_info);
+  return 0;
+}
+
+int generate_share_code(const char *creator, int order_id, char *out_code) {
+  cleanup_expired_share_codes();
+
+  for (int i = 0; i < share_code_count; i++) {
+    if (share_codes[i].order_id == order_id &&
+        strcmp(share_codes[i].creator, creator) == 0 &&
+        share_codes[i].is_valid) {
+      time_t now = time(NULL);
+      time_t expires_at;
+      if (parse_datetime(share_codes[i].expires_at, &expires_at) == 0 &&
+          difftime(expires_at, now) > 0) {
+        strncpy(out_code, share_codes[i].code, 8);
+        return share_codes[i].id;
+      } else {
+        share_codes[i].is_valid = 0;
+      }
+    }
+  }
+
+  for (int i = 0; i < order_count; i++) {
+    if (orders[i].id == order_id) {
+      if (strcmp(orders[i].creator, creator) != 0) {
+        return -2;
+      }
+      if (strcmp(orders[i].status, "pending") != 0) {
+        return -3;
+      }
+      break;
+    }
+  }
+
+  if (share_code_count >= MAX_SHARE_CODES) {
+    return -1;
+  }
+
+  char new_code[8];
+  int attempts = 0;
+  do {
+    generate_random_code(new_code, 6);
+    attempts++;
+  } while (!is_code_unique(new_code) && attempts < 100);
+
+  if (attempts >= 100) {
+    return -1;
+  }
+
+  ShareCode *sc = &share_codes[share_code_count++];
+  sc->id = share_code_next_id++;
+  strncpy(sc->code, new_code, sizeof(sc->code) - 1);
+  sc->order_id = order_id;
+  strncpy(sc->creator, creator, sizeof(sc->creator) - 1);
+  sc->is_valid = 1;
+
+  time_t t = time(NULL);
+  struct tm *tm_info = localtime(&t);
+  strftime(sc->created_at, sizeof(sc->created_at), "%Y-%m-%d %H:%M:%S", tm_info);
+
+  time_t expire_time = t + 24 * 3600;
+  struct tm *expire_tm = localtime(&expire_time);
+  strftime(sc->expires_at, sizeof(sc->expires_at), "%Y-%m-%d %H:%M:%S", expire_tm);
+
+  strncpy(out_code, sc->code, 8);
+  save_data();
+  log_message(LOG_INFO, "Share code generated: %s for order %d by %s", sc->code, order_id, creator);
+  return sc->id;
+}
+
+int verify_share_code(const char *code, int *out_order_id, char *out_message) {
+  cleanup_expired_share_codes();
+
+  if (!code || strlen(code) != 6) {
+    if (out_message) strcpy(out_message, "口令格式不正确");
+    return -1;
+  }
+
+  char upper_code[8];
+  strncpy(upper_code, code, sizeof(upper_code) - 1);
+  upper_code[6] = '\0';
+  for (int i = 0; i < 6; i++) {
+    if (upper_code[i] >= 'a' && upper_code[i] <= 'z') {
+      upper_code[i] = upper_code[i] - 'a' + 'A';
+    }
+  }
+
+  for (int i = 0; i < share_code_count; i++) {
+    if (strcmp(share_codes[i].code, upper_code) == 0) {
+      if (!share_codes[i].is_valid) {
+        if (out_message) strcpy(out_message, "该口令已失效");
+        return -2;
+      }
+
+      time_t now = time(NULL);
+      time_t expires_at;
+      if (parse_datetime(share_codes[i].expires_at, &expires_at) != 0 ||
+          difftime(expires_at, now) <= 0) {
+        share_codes[i].is_valid = 0;
+        save_data();
+        if (out_message) strcpy(out_message, "该口令已过期");
+        return -3;
+      }
+
+      int order_found = 0;
+      for (int j = 0; j < order_count; j++) {
+        if (orders[j].id == share_codes[i].order_id) {
+          order_found = 1;
+          if (strcmp(orders[j].status, "pending") != 0) {
+            share_codes[i].is_valid = 0;
+            save_data();
+            if (out_message) {
+              if (strcmp(orders[j].status, "cancelled") == 0) {
+                strcpy(out_message, "该订单已被撤回，口令失效");
+              } else {
+                strcpy(out_message, "该订单已被接单，口令失效");
+              }
+            }
+            return -4;
+          }
+          break;
+        }
+      }
+
+      if (!order_found) {
+        if (out_message) strcpy(out_message, "订单不存在");
+        return -5;
+      }
+
+      if (out_order_id) {
+        *out_order_id = share_codes[i].order_id;
+      }
+      if (out_message) strcpy(out_message, "验证成功");
+      return 0;
+    }
+  }
+
+  if (out_message) strcpy(out_message, "口令不存在");
+  return -6;
+}
+
+void get_share_code_by_order_json(char *json, int order_id, const char *creator) {
+  cleanup_expired_share_codes();
+
+  strcpy(json, "{\"exists\":false");
+
+  for (int i = 0; i < share_code_count; i++) {
+    if (share_codes[i].order_id == order_id &&
+        strcmp(share_codes[i].creator, creator) == 0 &&
+        share_codes[i].is_valid) {
+      time_t now = time(NULL);
+      time_t expires_at;
+      if (parse_datetime(share_codes[i].expires_at, &expires_at) == 0 &&
+          difftime(expires_at, now) > 0) {
+        sprintf(json + strlen(json),
+                ",\"exists\":true,\"code\":\"%s\",\"orderId\":%d,"
+                "\"createdAt\":\"%s\",\"expiresAt\":\"%s\","
+                "\"expiresInSeconds\":%.0f",
+                share_codes[i].code, share_codes[i].order_id,
+                share_codes[i].created_at, share_codes[i].expires_at,
+                difftime(expires_at, now));
+        break;
+      }
+    }
+  }
+
+  strcat(json, "}");
+}
+
+void cleanup_expired_share_codes() {
+  time_t now = time(NULL);
+  int changed = 0;
+
+  for (int i = 0; i < share_code_count; i++) {
+    if (share_codes[i].is_valid) {
+      time_t expires_at;
+      if (parse_datetime(share_codes[i].expires_at, &expires_at) == 0 &&
+          difftime(expires_at, now) <= 0) {
+        share_codes[i].is_valid = 0;
+        changed = 1;
+      }
+
+      int order_active = 0;
+      for (int j = 0; j < order_count; j++) {
+        if (orders[j].id == share_codes[i].order_id &&
+            strcmp(orders[j].status, "pending") == 0) {
+          order_active = 1;
+          break;
+        }
+      }
+      if (!order_active) {
+        share_codes[i].is_valid = 0;
+        changed = 1;
+      }
+    }
+  }
+
+  if (changed) {
+    save_data();
+  }
 }

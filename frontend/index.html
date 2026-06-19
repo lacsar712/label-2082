@@ -68,6 +68,7 @@
             </div>
             <nav class="nav-menu">
                 <a href="#" class="nav-item active" data-tab="dashboard"><i class="fas fa-th-large"></i> 任务大厅</a>
+                <a href="#" class="nav-item" data-tab="leaderboard"><i class="fas fa-trophy"></i> 跑腿排行榜</a>
                 <a href="#" class="nav-item" data-tab="my-orders"><i class="fas fa-clipboard-list"></i> 我的订单</a>
                 <a href="#" class="nav-item" data-tab="post-task"><i class="fas fa-plus-circle"></i> 发布悬赏</a>
                 <a href="#" class="nav-item" data-tab="profile"><i class="fas fa-user-circle"></i> 个人中心</a>
@@ -113,6 +114,20 @@
                     <button class="pill" data-filter="中通">中通/圆通</button>
                 </div>
                 <div class="order-grid" id="order-list"></div>
+            </section>
+
+            <!-- Leaderboard -->
+            <section class="view-section hidden" id="leaderboard-tab">
+                <div class="section-header">
+                    <h2><i class="fas fa-trophy" style="color: #fbbf24;"></i> 跑腿达人排行榜</h2>
+                    <div class="view-toggle">
+                        <button class="toggle-btn" data-period="week">本周榜</button>
+                        <button class="toggle-btn" data-period="month">本月榜</button>
+                        <button class="toggle-btn active" data-period="total">总榜</button>
+                    </div>
+                </div>
+                <div class="leaderboard-podium" id="podium-section"></div>
+                <div class="leaderboard-list" id="leaderboard-list"></div>
             </section>
 
             <!-- My Orders -->

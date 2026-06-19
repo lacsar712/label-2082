@@ -6,5 +6,7 @@
 void url_decode(char *dst, const char *src);
 void parse_json_string(const char *body, const char *key, char *output, int max_len);
 void get_orders_json(char *buf, const char *creator_filter, const char *worker_filter, const char *category_filter);
+void get_leaderboard_json(char *buf, const char *period);
+void get_runner_detail_json(char *buf, const char *username);
 
 #endif

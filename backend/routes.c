@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <time.h>
 #include <unistd.h>
 
 static void send_file(int client_socket, const char *path,
@@ -179,6 +180,11 @@ static void handle_create_order(int client_socket, char *body) {
 
   strcpy(new_order.status, "pending");
 
+  time_t t = time(NULL);
+  struct tm *tm_info = localtime(&t);
+  strftime(new_order.created_at, sizeof(new_order.created_at),
+           "%Y-%m-%d %H:%M:%S", tm_info);
+
   if (order_count < MAX_ORDERS) {
     orders[order_count++] = new_order;
     save_data();
@@ -259,6 +265,75 @@ static void handle_update_profile(int client_socket, char *body) {
   send(client_socket, response, strlen(response), 0);
 }
 
+static void handle_get_leaderboard(int client_socket, char *query_string) {
+  char period[20] = "total";
+  if (query_string) {
+    char *p_ptr = strstr(query_string, "period=");
+    if (p_ptr) {
+      char decoded[20] = {0};
+      sscanf(p_ptr + 7, "%[^& ]", decoded);
+      if (strcmp(decoded, "week") == 0 || strcmp(decoded, "month") == 0 ||
+          strcmp(decoded, "total") == 0) {
+        strncpy(period, decoded, sizeof(period) - 1);
+      }
+    }
+  }
+
+  char response_header[] =
+      "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+      "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(MAX_USERS * 512);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for leaderboard JSON");
+    return;
+  }
+  memset(json, 0, MAX_USERS * 512);
+  get_leaderboard_json(json, period);
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "Leaderboard fetched - period: %s", period);
+}
+
+static void handle_get_runner_detail(int client_socket, char *query_string) {
+  char username[50] = "";
+  if (query_string) {
+    char *u_ptr = strstr(query_string, "username=");
+    if (u_ptr) {
+      char decoded[50] = {0};
+      sscanf(u_ptr + 9, "%[^& ]", decoded);
+      strncpy(username, decoded, sizeof(username) - 1);
+    }
+  }
+
+  if (strlen(username) == 0) {
+    char response[] =
+        "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+        "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少username参数\"}";
+    send(client_socket, response, strlen(response), 0);
+    return;
+  }
+
+  char response_header[] =
+      "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+      "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(20 * 512 + 1024);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for runner detail JSON");
+    return;
+  }
+  memset(json, 0, 20 * 512 + 1024);
+  get_runner_detail_json(json, username);
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "Runner detail fetched - username: %s", username);
+}
+
 void handle_request(int client_socket) {
   char buffer[BUFFER_SIZE];
   memset(buffer, 0, BUFFER_SIZE);
@@ -330,6 +405,14 @@ void handle_request(int client_socket) {
       body += 4;
       handle_update_profile(client_socket, body);
     }
+  } else if (strstr(buffer, "GET /api/leaderboard")) {
+    char *path_start = strstr(buffer, "GET /api/leaderboard");
+    char *q = strstr(path_start, "?");
+    handle_get_leaderboard(client_socket, q);
+  } else if (strstr(buffer, "GET /api/runner_detail")) {
+    char *path_start = strstr(buffer, "GET /api/runner_detail");
+    char *q = strstr(path_start, "?");
+    handle_get_runner_detail(client_socket, q);
   } else {
     log_message(LOG_WARN, "404 Not Found: %.50s", buffer);
     char response[] = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";

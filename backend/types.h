@@ -22,6 +22,8 @@ typedef struct {
   char reward[20];
   char category[50];
   char status[20];
+  char created_at[32];
+  int rating;
 } Order;
 
 #endif

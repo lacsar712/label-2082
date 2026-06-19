@@ -3,6 +3,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentUser = JSON.parse(localStorage.getItem('user')) || null;
     let currentFilter = '';
     let myOrdersView = 'created'; // 'created' or 'accepted'
+    let leaderboardPeriod = 'total'; // 'week', 'month', 'total'
+    let expandedRunner = null;
 
     const elements = {
         authOverlay: document.getElementById('auth-overlay'),
@@ -35,7 +37,10 @@ document.addEventListener('DOMContentLoaded', () => {
         securityForm: document.getElementById('security-form'),
         editRealname: document.getElementById('edit-realname'),
         editMajor: document.getElementById('edit-major'),
-        editPassword: document.getElementById('edit-password')
+        editPassword: document.getElementById('edit-password'),
+        podiumSection: document.getElementById('podium-section'),
+        leaderboardList: document.getElementById('leaderboard-list'),
+        periodToggles: document.querySelectorAll('#leaderboard-tab .toggle-btn')
     };
 
     // --- Authentication ---
@@ -154,6 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (tab === 'dashboard') fetchOrders();
             if (tab === 'my-orders') fetchMyOrders();
             if (tab === 'profile') loadProfile();
+            if (tab === 'leaderboard') fetchLeaderboard();
         };
     });
 
@@ -380,6 +386,192 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (err) { showToast('修改失败'); }
     };
+
+    // --- Leaderboard ---
+    async function fetchLeaderboard() {
+        try {
+            const resp = await fetch(`/api/leaderboard?period=${leaderboardPeriod}`);
+            const data = await resp.json();
+            renderLeaderboard(data);
+        } catch (err) {
+            console.error('Failed to fetch leaderboard:', err);
+            showToast('加载排行榜失败');
+        }
+    }
+
+    function renderLeaderboard(runners) {
+        elements.podiumSection.innerHTML = '';
+        elements.leaderboardList.innerHTML = '';
+        expandedRunner = null;
+
+        if (runners.length === 0) {
+            elements.podiumSection.innerHTML = `
+                <div class="empty-leaderboard" style="width:100%;">
+                    <i class="fas fa-trophy"></i>
+                    <p>暂无排行数据，快去接单冲榜吧！</p>
+                </div>
+            `;
+            return;
+        }
+
+        const top3 = runners.slice(0, 3);
+        const rest = runners.slice(3);
+
+        top3.forEach((runner, index) => {
+            const rank = index + 1;
+            const card = document.createElement('div');
+            card.className = `podium-card rank-${rank}`;
+            card.dataset.username = runner.username;
+            card.innerHTML = `
+                <div class="podium-rank-badge">${rank}</div>
+                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${runner.username}" alt="${runner.nickname}" class="podium-avatar">
+                <div class="podium-name">${runner.nickname}</div>
+                <div class="podium-major">${runner.major}</div>
+                <div class="podium-stats">
+                    <div class="podium-stat">
+                        <span class="podium-stat-val">${runner.totalOrders}</span>
+                        <span class="podium-stat-lab">完成单量</span>
+                    </div>
+                    <div class="podium-stat">
+                        <span class="podium-stat-val">${runner.goodRate}%</span>
+                        <span class="podium-stat-lab">好评率</span>
+                    </div>
+                </div>
+            `;
+            card.onclick = () => toggleRunnerDetail(runner.username, card);
+            elements.podiumSection.appendChild(card);
+        });
+
+        rest.forEach((runner) => {
+            const cardWrap = document.createElement('div');
+            cardWrap.className = 'runner-card-wrapper';
+
+            const card = document.createElement('div');
+            card.className = 'runner-card';
+            card.dataset.username = runner.username;
+            card.innerHTML = `
+                <div class="runner-rank">${runner.rank}</div>
+                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${runner.username}" alt="${runner.nickname}" class="runner-avatar">
+                <div class="runner-info">
+                    <div class="runner-name">${runner.nickname}</div>
+                    <div class="runner-major">${runner.major}</div>
+                </div>
+                <div class="runner-stats">
+                    <div class="runner-stat">
+                        <div class="runner-stat-val">${runner.totalOrders}</div>
+                        <div class="runner-stat-lab">完成单量</div>
+                    </div>
+                    <div class="runner-stat good">
+                        <div class="runner-stat-val">${runner.goodRate}%</div>
+                        <div class="runner-stat-lab">好评率</div>
+                    </div>
+                    <div class="runner-stat activity">
+                        <div class="runner-stat-val">${runner.weekActivity}</div>
+                        <div class="runner-stat-lab">近7日</div>
+                    </div>
+                </div>
+                <i class="fas fa-chevron-down runner-expand-icon"></i>
+            `;
+            card.onclick = () => toggleRunnerDetail(runner.username, card);
+
+            const detail = document.createElement('div');
+            detail.className = 'runner-detail-panel';
+            detail.dataset.username = runner.username;
+
+            cardWrap.appendChild(card);
+            cardWrap.appendChild(detail);
+            elements.leaderboardList.appendChild(cardWrap);
+        });
+    }
+
+    async function toggleRunnerDetail(username, cardEl) {
+        const isExpanded = cardEl.classList.contains('expanded');
+
+        document.querySelectorAll('.runner-card.expanded').forEach(card => {
+            card.classList.remove('expanded');
+        });
+        document.querySelectorAll('.podium-card.expanded').forEach(card => {
+            card.classList.remove('expanded');
+        });
+
+        if (isExpanded) {
+            expandedRunner = null;
+            return;
+        }
+
+        cardEl.classList.add('expanded');
+        expandedRunner = username;
+
+        let detailPanel;
+        if (cardEl.classList.contains('podium-card')) {
+            detailPanel = cardEl.querySelector('.podium-detail-panel');
+            if (!detailPanel) {
+                detailPanel = document.createElement('div');
+                detailPanel.className = 'podium-detail-panel';
+                cardEl.appendChild(detailPanel);
+            }
+        } else {
+            const wrapper = cardEl.closest('.runner-card-wrapper');
+            detailPanel = wrapper.querySelector('.runner-detail-panel');
+        }
+
+        if (!detailPanel) return;
+        detailPanel.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> 加载中...</div>';
+
+        try {
+            const resp = await fetch(`/api/runner_detail?username=${encodeURIComponent(username)}`);
+            const data = await resp.json();
+            renderRunnerDetail(detailPanel, data);
+        } catch (err) {
+            detailPanel.innerHTML = '<div style="text-align:center;padding:20px;color:#ef4444;">加载失败</div>';
+        }
+    }
+
+    function renderRunnerDetail(panel, data) {
+        if (data.recentOrders.length === 0) {
+            panel.innerHTML = `
+                <div style="text-align:center;padding:20px;color:var(--text-muted);">
+                    暂无完成的订单
+                </div>
+            `;
+            return;
+        }
+
+        const orders = data.recentOrders.slice(0, 5);
+        let html = '<div class="recent-orders-title"><i class="fas fa-box" style="color:var(--primary);margin-right:8px;"></i>近期完成订单</div>';
+
+        orders.forEach(order => {
+            const stars = '★'.repeat(order.rating || 5) + '☆'.repeat(5 - (order.rating || 5));
+            html += `
+                <div class="recent-order-item">
+                    <div class="recent-order-icon">
+                        <i class="fas fa-package"></i>
+                    </div>
+                    <div class="recent-order-info">
+                        <div class="recent-order-pkg">${order.package}</div>
+                        <div class="recent-order-addr">
+                            <i class="fas fa-map-marker-alt" style="margin-right:4px;"></i>${order.pickup} → ${order.delivery}
+                        </div>
+                    </div>
+                    <div class="recent-order-meta">
+                        <div class="recent-order-reward">${order.reward}</div>
+                        <div class="recent-order-rating">${stars}</div>
+                    </div>
+                </div>
+            `;
+        });
+
+        panel.innerHTML = html;
+    }
+
+    elements.periodToggles.forEach(btn => {
+        btn.onclick = () => {
+            elements.periodToggles.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            leaderboardPeriod = btn.dataset.period;
+            fetchLeaderboard();
+        };
+    });
 
     function showToast(msg) {
         const t = elements.toast;

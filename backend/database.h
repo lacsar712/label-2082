@@ -23,5 +23,6 @@ void load_data();
 const char* get_user_real_name(const char *username);
 void create_notification(const char *username, const char *type, const char *title, const char *summary, const char *related_id);
 void get_feedbacks_json(char *json, const char *username);
+void get_stations_json(char *json);
 
 #endif

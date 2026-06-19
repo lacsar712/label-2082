@@ -349,6 +349,57 @@ static void seed_demo_data() {
   }
 }
 
+void get_stations_json(char *json) {
+  typedef struct {
+    const char *id;
+    const char *name;
+    const char *short_name;
+    const char *hours;
+    const char *phone;
+    const char *gate;
+    int map_x;
+    int map_y;
+    const char *color;
+    const char *icon;
+    const char *keyword;
+  } StationDef;
+
+  StationDef stations[] = {
+    {"cainiao", "菜鸟驿站-南门", "南门菜鸟", "08:00 - 21:00", "027-88881001", "南门", 25, 78, "#6366f1", "fa-box", "菜鸟"},
+    {"sf", "顺丰速运-西门", "西门顺丰", "09:00 - 20:00", "027-88881002", "西门", 80, 50, "#f43f5e", "fa-truck-fast", "顺丰"},
+    {"jd", "京东派-北区", "京东派北区", "08:30 - 20:30", "027-88881003", "北区", 50, 15, "#f59e0b", "fa-store", "京东"},
+    {"zt", "中通圆通-东门", "中通圆通东门", "08:00 - 21:30", "027-88881004", "东门", 80, 78, "#10b981", "fa-parachute-box", "中通"}
+  };
+
+  strcat(json, "[");
+  int station_count = sizeof(stations) / sizeof(stations[0]);
+
+  for (int s = 0; s < station_count; s++) {
+    if (s > 0) strcat(json, ",");
+
+    int pending = 0;
+    for (int i = 0; i < order_count; i++) {
+      if (strcmp(orders[i].status, "pending") == 0 &&
+          strstr(orders[i].pickup_addr, stations[s].keyword) != NULL) {
+        pending++;
+      }
+    }
+
+    char item[1024];
+    sprintf(item,
+            "{\"id\":\"%s\",\"name\":\"%s\",\"shortName\":\"%s\","
+            "\"hours\":\"%s\",\"phone\":\"%s\",\"gate\":\"%s\","
+            "\"mapX\":%d,\"mapY\":%d,\"color\":\"%s\",\"icon\":\"%s\","
+            "\"pendingCount\":%d}",
+            stations[s].id, stations[s].name, stations[s].short_name,
+            stations[s].hours, stations[s].phone, stations[s].gate,
+            stations[s].map_x, stations[s].map_y, stations[s].color,
+            stations[s].icon, pending);
+    strcat(json, item);
+  }
+  strcat(json, "]");
+}
+
 void load_data() {
   FILE *f1 = fopen("data_orders.bin", "rb");
   if (f1) {

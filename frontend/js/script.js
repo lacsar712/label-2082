@@ -218,6 +218,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (tab === 'leaderboard') fetchLeaderboard();
             if (tab === 'lostfound') fetchLostFound();
             if (tab === 'help') loadHelpCenter();
+            if (tab === 'stations') {
+                stationsState.zoom = 1;
+                if (elements.campusMap) elements.campusMap.style.transform = 'scale(1)';
+                fetchStations();
+            }
             if (tab === 'notifications') {
                 fetchNotifications();
                 fetchUnreadCount();
@@ -1332,6 +1337,419 @@ document.addEventListener('DOMContentLoaded', () => {
             if (answerEl) removeHighlight(answerEl);
         });
     }
+
+    let stationsState = {
+        view: 'map',
+        sort: 'pending_desc',
+        zoom: 1,
+        activeStation: null,
+        data: []
+    };
+
+    Object.assign(elements, {
+        stationsSummary: document.getElementById('stations-summary'),
+        stationMarkers: document.getElementById('station-markers'),
+        stationsMapView: document.getElementById('stations-map-view'),
+        stationsListView: document.getElementById('stations-list-view'),
+        stationsViewToggles: document.querySelectorAll('[data-stations-view]'),
+        stationsRefreshBtn: document.getElementById('stations-refresh-btn'),
+        stationsSortSelect: document.getElementById('stations-sort-select'),
+        stationsListGrid: document.getElementById('stations-list-grid'),
+        stationsListCount: document.getElementById('stations-list-count'),
+        stationPopup: document.getElementById('station-popup'),
+        zoomIn: document.getElementById('zoom-in'),
+        zoomReset: document.getElementById('zoom-reset'),
+        zoomOut: document.getElementById('zoom-out'),
+        campusMap: document.querySelector('.campus-map')
+    });
+
+    async function fetchStations() {
+        try {
+            const resp = await fetch('/api/stations');
+            const stations = await resp.json();
+            stationsState.data = stations;
+            renderStations();
+        } catch (err) {
+            console.error('Failed to fetch stations:', err);
+            showToast('加载驿站数据失败');
+        }
+    }
+
+    function renderStations() {
+        renderStationSummary();
+        renderMapMarkers();
+        renderStationList();
+    }
+
+    function getPendingLevel(count) {
+        if (count >= 5) return 'hot';
+        if (count >= 2) return 'medium';
+        return 'cool';
+    }
+
+    function renderStationSummary() {
+        if (!elements.stationsSummary) return;
+        const stations = stationsState.data;
+
+        if (!stations || stations.length === 0) {
+            elements.stationsSummary.innerHTML = `
+                <div style="grid-column: 1/-1; text-align:center; color:var(--text-muted); padding:20px;">
+                    暂无驿站数据
+                </div>`;
+            return;
+        }
+
+        elements.stationsSummary.innerHTML = stations.map(s => {
+            const level = getPendingLevel(s.pendingCount);
+            return `
+                <div class="summary-card" data-station-id="${s.id}">
+                    <div class="summary-card-icon" style="background:${s.color}">
+                        <i class="fas ${s.icon}"></i>
+                    </div>
+                    <div class="summary-card-info">
+                        <div class="summary-card-name">${s.shortName}</div>
+                        <div class="summary-card-count ${level}">${s.pendingCount}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        elements.stationsSummary.querySelectorAll('.summary-card').forEach(card => {
+            card.onclick = () => {
+                const id = card.dataset.stationId;
+                const station = stationsState.data.find(s => s.id === id);
+                if (station) {
+                    if (stationsState.view === 'map') {
+                        focusStationOnMap(station);
+                    }
+                    showStationPopup(station, card);
+                }
+            };
+        });
+    }
+
+    function renderMapMarkers() {
+        if (!elements.stationMarkers) return;
+        const stations = stationsState.data;
+
+        if (!stations || stations.length === 0) {
+            elements.stationMarkers.innerHTML = '';
+            return;
+        }
+
+        elements.stationMarkers.innerHTML = stations.map(s => {
+            const level = getPendingLevel(s.pendingCount);
+            return `
+                <div class="station-marker" data-station-id="${s.id}"
+                     style="left:${s.mapX}%; top:${s.mapY}%;">
+                    <div class="marker-pin" style="background:${s.color}">
+                        <i class="fas ${s.icon}"></i>
+                        ${s.pendingCount > 0 ? `<div class="marker-badge"><span>${s.pendingCount}</span></div>` : ''}
+                    </div>
+                    <div class="marker-label">${s.shortName}</div>
+                </div>
+            `;
+        }).join('');
+
+        elements.stationMarkers.querySelectorAll('.station-marker').forEach(marker => {
+            marker.onclick = (e) => {
+                e.stopPropagation();
+                const id = marker.dataset.stationId;
+                const station = stationsState.data.find(s => s.id === id);
+                if (station) {
+                    document.querySelectorAll('.station-marker').forEach(m => m.classList.remove('active'));
+                    marker.classList.add('active');
+                    stationsState.activeStation = id;
+                    showStationPopup(station, marker);
+                }
+            };
+        });
+    }
+
+    function focusStationOnMap(station) {
+        if (!elements.campusMap) return;
+        const allMarkers = document.querySelectorAll('.station-marker');
+        allMarkers.forEach(m => {
+            m.classList.remove('active');
+            if (m.dataset.stationId === station.id) {
+                m.classList.add('active');
+            }
+        });
+    }
+
+    function renderStationList() {
+        if (!elements.stationsListGrid) return;
+        let stations = [...stationsState.data];
+
+        if (!stations || stations.length === 0) {
+            elements.stationsListGrid.innerHTML = `
+                <div class="stations-empty">
+                    <i class="fas fa-store-slash"></i>
+                    <h3>暂无驿站数据</h3>
+                    <p>驿站信息加载中，请稍后...</p>
+                </div>`;
+            if (elements.stationsListCount) {
+                elements.stationsListCount.innerHTML = '共 <strong>0</strong> 个驿站';
+            }
+            return;
+        }
+
+        switch (stationsState.sort) {
+            case 'pending_desc':
+                stations.sort((a, b) => b.pendingCount - a.pendingCount);
+                break;
+            case 'pending_asc':
+                stations.sort((a, b) => a.pendingCount - b.pendingCount);
+                break;
+            case 'name_asc':
+                stations.sort((a, b) => a.name.localeCompare(b.name, 'zh'));
+                break;
+        }
+
+        elements.stationsListGrid.innerHTML = stations.map(s => {
+            const level = getPendingLevel(s.pendingCount);
+            return `
+                <div class="station-list-card" data-station-id="${s.id}" style="--card-color:${s.color}">
+                    <div class="station-card-header">
+                        <div class="station-card-icon" style="background:${s.color}">
+                            <i class="fas ${s.icon}"></i>
+                        </div>
+                        <div class="station-card-title">
+                            <div class="station-card-name">${escapeHtml(s.name)}</div>
+                            <div class="station-card-gate">
+                                <i class="fas fa-map-pin"></i> ${escapeHtml(s.gate)}
+                            </div>
+                        </div>
+                        <div class="station-card-pending">
+                            <div class="pending-num ${level}">${s.pendingCount}</div>
+                            <div class="pending-label">待取任务</div>
+                        </div>
+                    </div>
+                    <div class="station-card-body">
+                        <div class="station-info-row">
+                            <i class="fas fa-clock"></i>
+                            <span class="station-info-label">营业时间</span>
+                            <span class="station-info-value">${escapeHtml(s.hours)}</span>
+                        </div>
+                        <div class="station-info-row">
+                            <i class="fas fa-phone"></i>
+                            <span class="station-info-label">联系电话</span>
+                            <span class="station-info-value">${escapeHtml(s.phone)}</span>
+                        </div>
+                    </div>
+                    <div class="station-card-footer">
+                        <button class="station-card-btn primary" onclick="viewStationTasks('${s.id}')">
+                            <i class="fas fa-list-ul"></i> 查看任务
+                        </button>
+                        <button class="station-card-btn secondary" onclick="showStationCardPopup('${s.id}')">
+                            <i class="fas fa-info-circle"></i> 详情
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        const styleEl = document.getElementById('station-card-style') || (() => {
+            const el = document.createElement('style');
+            el.id = 'station-card-style';
+            document.head.appendChild(el);
+            return el;
+        })();
+        styleEl.textContent = '.station-list-card::before{ background: var(--card-color, var(--primary)); }';
+
+        if (elements.stationsListCount) {
+            elements.stationsListCount.innerHTML = `共 <strong>${stations.length}</strong> 个驿站`;
+        }
+    }
+
+    function showStationPopup(station, anchorEl) {
+        if (!elements.stationPopup) return;
+        const level = getPendingLevel(station.pendingCount);
+        const levelText = level === 'hot' ? '🔥 任务火爆' : level === 'medium' ? '✨ 任务适中' : '🌿 任务较少';
+
+        elements.stationPopup.innerHTML = `
+            <div class="popup-header">
+                <div class="popup-icon" style="background:${station.color}">
+                    <i class="fas ${station.icon}"></i>
+                </div>
+                <div class="popup-title-info">
+                    <div class="popup-name">${escapeHtml(station.name)}</div>
+                    <div class="popup-gate">
+                        <i class="fas fa-map-pin"></i> ${escapeHtml(station.gate)}
+                    </div>
+                </div>
+                <button class="popup-close" onclick="hideStationPopup()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="popup-pending-bar">
+                <span class="popup-pending-label">当前待取任务</span>
+                <span class="popup-pending-count ${level}">
+                    ${station.pendingCount} 单
+                    <span style="font-size:0.75rem; font-weight:600; opacity:0.8;">${levelText}</span>
+                </span>
+            </div>
+            <div class="popup-body">
+                <div class="popup-info-row">
+                    <i class="fas fa-clock"></i>
+                    <span class="popup-info-label">营业时间</span>
+                    <span class="popup-info-value">${escapeHtml(station.hours)}</span>
+                </div>
+                <div class="popup-info-row">
+                    <i class="fas fa-phone"></i>
+                    <span class="popup-info-label">联系电话</span>
+                    <span class="popup-info-value">${escapeHtml(station.phone)}</span>
+                </div>
+                <div class="popup-info-row">
+                    <i class="fas fa-location-dot"></i>
+                    <span class="popup-info-label">位置区域</span>
+                    <span class="popup-info-value">${escapeHtml(station.gate)}</span>
+                </div>
+            </div>
+            <div class="popup-footer">
+                <button class="popup-btn primary" onclick="viewStationTasks('${station.id}')">
+                    <i class="fas fa-list-ul"></i> 查看该驿站任务
+                </button>
+                <button class="popup-btn secondary" onclick="hideStationPopup()">
+                    关闭
+                </button>
+            </div>
+        `;
+
+        elements.stationPopup.classList.remove('hidden');
+        positionPopup(anchorEl);
+    }
+
+    function positionPopup(anchorEl) {
+        if (!elements.stationPopup || !anchorEl) return;
+
+        const popup = elements.stationPopup;
+        const rect = anchorEl.getBoundingClientRect();
+        const popupRect = popup.getBoundingClientRect();
+
+        let left = rect.left + rect.width / 2 - popupRect.width / 2;
+        let top = rect.bottom + 12;
+
+        if (left < 10) left = 10;
+        if (left + popupRect.width > window.innerWidth - 10) {
+            left = window.innerWidth - popupRect.width - 10;
+        }
+        if (top + popupRect.height > window.innerHeight - 10) {
+            top = rect.top - popupRect.height - 12;
+            if (top < 10) top = 10;
+        }
+
+        popup.style.left = `${left}px`;
+        popup.style.top = `${top}px`;
+    }
+
+    window.hideStationPopup = () => {
+        if (elements.stationPopup) {
+            elements.stationPopup.classList.add('hidden');
+        }
+        document.querySelectorAll('.station-marker').forEach(m => m.classList.remove('active'));
+        stationsState.activeStation = null;
+    };
+
+    window.showStationCardPopup = (stationId) => {
+        const station = stationsState.data.find(s => s.id === stationId);
+        if (station) {
+            const card = document.querySelector(`.station-list-card[data-station-id="${stationId}"]`);
+            showStationPopup(station, card || document.body);
+        }
+    };
+
+    window.viewStationTasks = (stationId) => {
+        const station = stationsState.data.find(s => s.id === stationId);
+        if (!station) return;
+        hideStationPopup();
+        currentFilter = station.id === 'zt' ? '中通' :
+                        station.id === 'cainiao' ? '菜鸟' :
+                        station.id === 'sf' ? '顺丰' :
+                        station.id === 'jd' ? '京东' : '';
+
+        elements.filterPills.forEach(p => {
+            p.classList.remove('active');
+            if (p.dataset.filter === currentFilter || (currentFilter === '' && p.dataset.filter === '全部')) {
+                p.classList.add('active');
+            }
+        });
+
+        document.querySelector('[data-tab="dashboard"]').click();
+        showToast(`已切换到「${station.shortName}」的待取任务`);
+    };
+
+    elements.stationsViewToggles.forEach(btn => {
+        btn.onclick = () => {
+            elements.stationsViewToggles.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            stationsState.view = btn.dataset.stationsView;
+            hideStationPopup();
+
+            if (stationsState.view === 'map') {
+                elements.stationsMapView.classList.remove('hidden');
+                elements.stationsListView.classList.add('hidden');
+            } else {
+                elements.stationsMapView.classList.add('hidden');
+                elements.stationsListView.classList.remove('hidden');
+            }
+        };
+    });
+
+    if (elements.stationsRefreshBtn) {
+        elements.stationsRefreshBtn.onclick = () => {
+            const icon = elements.stationsRefreshBtn.querySelector('i');
+            if (icon) icon.classList.add('fa-spin');
+            fetchStations().finally(() => {
+                if (icon) setTimeout(() => icon.classList.remove('fa-spin'), 500);
+            });
+            showToast('数据已刷新');
+        };
+    }
+
+    if (elements.stationsSortSelect) {
+        elements.stationsSortSelect.onchange = () => {
+            stationsState.sort = elements.stationsSortSelect.value;
+            renderStationList();
+        };
+    }
+
+    function setMapZoom(zoom) {
+        stationsState.zoom = Math.max(0.6, Math.min(1.8, zoom));
+        if (elements.campusMap) {
+            elements.campusMap.style.transform = `scale(${stationsState.zoom})`;
+            elements.campusMap.style.transformOrigin = 'center center';
+        }
+    }
+
+    if (elements.zoomIn) {
+        elements.zoomIn.onclick = () => setMapZoom(stationsState.zoom + 0.2);
+    }
+    if (elements.zoomOut) {
+        elements.zoomOut.onclick = () => setMapZoom(stationsState.zoom - 0.2);
+    }
+    if (elements.zoomReset) {
+        elements.zoomReset.onclick = () => setMapZoom(1);
+    }
+
+    document.addEventListener('click', (e) => {
+        if (elements.stationPopup && !elements.stationPopup.classList.contains('hidden')) {
+            if (!elements.stationPopup.contains(e.target) &&
+                !e.target.closest('.station-marker') &&
+                !e.target.closest('.summary-card') &&
+                !e.target.closest('.station-list-card') &&
+                !e.target.closest('.station-card-btn')) {
+                hideStationPopup();
+            }
+        }
+    });
+
+    window.addEventListener('resize', () => {
+        if (elements.stationPopup && !elements.stationPopup.classList.contains('hidden') && stationsState.activeStation) {
+            const marker = document.querySelector(`.station-marker[data-station-id="${stationsState.activeStation}"]`);
+            if (marker) positionPopup(marker);
+        }
+    });
 
     // Init
     updateUIForLogin();

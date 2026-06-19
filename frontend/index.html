@@ -74,6 +74,7 @@
                 </a>
                 <a href="#" class="nav-item" data-tab="lostfound"><i class="fas fa-bullhorn"></i> 失物招领</a>
                 <a href="#" class="nav-item" data-tab="leaderboard"><i class="fas fa-trophy"></i> 跑腿排行榜</a>
+                <a href="#" class="nav-item" data-tab="stations"><i class="fas fa-map-marked-alt"></i> 驿站分布地图</a>
                 <a href="#" class="nav-item" data-tab="my-orders"><i class="fas fa-clipboard-list"></i> 我的订单</a>
                 <a href="#" class="nav-item" data-tab="post-task"><i class="fas fa-plus-circle"></i> 发布悬赏</a>
                 <a href="#" class="nav-item" data-tab="help"><i class="fas fa-question-circle"></i> 帮助中心</a>
@@ -168,6 +169,81 @@
                 </div>
                 <div class="leaderboard-podium" id="podium-section"></div>
                 <div class="leaderboard-list" id="leaderboard-list"></div>
+            </section>
+
+            <!-- Stations Map -->
+            <section class="view-section hidden" id="stations-tab">
+                <div class="stations-header">
+                    <div>
+                        <h1><i class="fas fa-map-marked-alt" style="color: var(--primary);"></i> 校园驿站分布地图</h1>
+                        <p class="stations-subtitle">查看各驿站位置与待取任务，选择最优路线</p>
+                    </div>
+                    <div class="stations-toolbar">
+                        <div class="view-toggle stations-view-toggle">
+                            <button class="toggle-btn active" data-stations-view="map">
+                                <i class="fas fa-map"></i> 地图视图
+                            </button>
+                            <button class="toggle-btn" data-stations-view="list">
+                                <i class="fas fa-list"></i> 列表视图
+                            </button>
+                        </div>
+                        <button class="btn-primary stations-refresh-btn" id="stations-refresh-btn">
+                            <i class="fas fa-sync-alt"></i> 刷新
+                        </button>
+                    </div>
+                </div>
+
+                <div class="stations-summary" id="stations-summary"></div>
+
+                <div class="stations-map-view" id="stations-map-view">
+                    <div class="map-container">
+                        <div class="campus-map">
+                            <div class="map-label map-north">北区</div>
+                            <div class="map-label map-south">南门</div>
+                            <div class="map-label map-west">西门</div>
+                            <div class="map-label map-east">东门</div>
+                            <div class="map-road map-road-h"></div>
+                            <div class="map-road map-road-v"></div>
+                            <div class="map-building map-lib">图书馆</div>
+                            <div class="map-building map-canteen">食堂</div>
+                            <div class="map-building map-dorm">宿舍区</div>
+                            <div class="map-building map-teach">教学楼</div>
+                            <div class="map-building map-sport">操场</div>
+                            <div id="station-markers"></div>
+                        </div>
+                        <div class="map-legend">
+                            <div class="legend-title">图例说明</div>
+                            <div class="legend-items">
+                                <div class="legend-item"><span class="legend-dot" style="background:#6366f1;"></span>菜鸟驿站</div>
+                                <div class="legend-item"><span class="legend-dot" style="background:#f43f5e;"></span>顺丰速运</div>
+                                <div class="legend-item"><span class="legend-dot" style="background:#f59e0b;"></span>京东派</div>
+                                <div class="legend-item"><span class="legend-dot" style="background:#10b981;"></span>中通圆通</div>
+                            </div>
+                            <div class="map-zoom-controls">
+                                <button class="zoom-btn" id="zoom-in"><i class="fas fa-plus"></i></button>
+                                <button class="zoom-btn" id="zoom-reset"><i class="fas fa-compress-arrows-alt"></i></button>
+                                <button class="zoom-btn" id="zoom-out"><i class="fas fa-minus"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stations-list-view hidden" id="stations-list-view">
+                    <div class="list-toolbar">
+                        <div class="list-sort-wrap">
+                            <span class="sort-label">排序：</span>
+                            <select id="stations-sort-select">
+                                <option value="pending_desc">待取任务最多</option>
+                                <option value="pending_asc">待取任务最少</option>
+                                <option value="name_asc">名称 A-Z</option>
+                            </select>
+                        </div>
+                        <div class="list-count" id="stations-list-count"></div>
+                    </div>
+                    <div class="stations-list-grid" id="stations-list-grid"></div>
+                </div>
+
+                <div id="station-popup" class="station-popup hidden"></div>
             </section>
 
             <!-- My Orders -->

@@ -762,6 +762,25 @@ static void handle_get_feedback(int client_socket, char *query_string) {
               username[0] ? username : "all");
 }
 
+static void handle_get_stations(int client_socket) {
+  char response_header[] =
+      "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+      "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(8 * 1024);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for stations JSON");
+    return;
+  }
+  memset(json, 0, 8 * 1024);
+  get_stations_json(json);
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "Stations fetched");
+}
+
 void handle_request(int client_socket) {
   char buffer[BUFFER_SIZE];
   memset(buffer, 0, BUFFER_SIZE);
@@ -893,6 +912,8 @@ void handle_request(int client_socket) {
     char *path_start = strstr(buffer, "GET /api/feedback");
     char *q = strstr(path_start, "?");
     handle_get_feedback(client_socket, q);
+  } else if (strstr(buffer, "GET /api/stations")) {
+    handle_get_stations(client_socket);
   } else {
     log_message(LOG_WARN, "404 Not Found: %.50s", buffer);
     char response[] = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";

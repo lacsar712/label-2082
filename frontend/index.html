@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>校递快跑 - 大学生代取快递平台</title>
-    <link rel="stylesheet" href="style.css?v=3">
+    <link rel="stylesheet" href="style.css?v=4">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -77,6 +77,7 @@
                 <a href="#" class="nav-item" data-tab="stations"><i class="fas fa-map-marked-alt"></i> 驿站分布地图</a>
                 <a href="#" class="nav-item" data-tab="my-orders"><i class="fas fa-clipboard-list"></i> 我的订单</a>
                 <a href="#" class="nav-item" data-tab="post-task"><i class="fas fa-plus-circle"></i> 发布悬赏</a>
+                <a href="#" class="nav-item" data-tab="templates"><i class="fas fa-bookmark"></i> 模板库</a>
                 <a href="#" class="nav-item" data-tab="wallet"><i class="fas fa-wallet"></i> 我的钱包</a>
                 <a href="#" class="nav-item" data-tab="help"><i class="fas fa-question-circle"></i> 帮助中心</a>
                 <a href="#" class="nav-item" data-tab="profile"><i class="fas fa-user-circle"></i> 个人中心</a>
@@ -262,7 +263,24 @@
             <!-- Post Task -->
             <section class="view-section hidden" id="post-task-tab">
                 <div class="form-container">
-                    <h2><i class="fas fa-pen-nib"></i> 发布代取信息</h2>
+                    <div class="post-task-header">
+                        <h2><i class="fas fa-pen-nib"></i> 发布代取信息</h2>
+                        <div class="post-task-actions">
+                            <button type="button" class="btn-outline" id="btn-from-template">
+                                <i class="fas fa-clone"></i> 从模板创建
+                            </button>
+                            <button type="button" class="btn-outline" id="btn-save-template">
+                                <i class="fas fa-save"></i> 存为模板
+                            </button>
+                        </div>
+                    </div>
+                    <div id="default-template-banner" class="default-template-banner hidden">
+                        <i class="fas fa-star"></i> 已自动填充默认模板
+                        <span id="default-template-name"></span>
+                        <button type="button" class="close-banner" onclick="this.parentElement.classList.add('hidden')">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
                     <form id="order-form">
                         <div class="form-group">
                             <label>包裹简称 <span style="color: #94a3b8; font-size: 0.85rem;">(最多30字)</span></label>
@@ -306,6 +324,34 @@
                         </div>
                         <button type="submit" class="submit-btn">立即发布任务</button>
                     </form>
+                </div>
+            </section>
+
+            <!-- Templates -->
+            <section class="view-section hidden" id="templates-tab">
+                <div class="templates-container">
+                    <div class="section-header">
+                        <h2><i class="fas fa-bookmark" style="color: var(--primary);"></i> 我的模板库</h2>
+                        <div class="templates-toolbar">
+                            <div class="templates-search-wrap">
+                                <i class="fas fa-search"></i>
+                                <input type="text" id="templates-search-input" placeholder="搜索模板名称...">
+                            </div>
+                            <button class="btn-primary" id="btn-create-template-from-lib">
+                                <i class="fas fa-plus"></i> 新建模板
+                            </button>
+                        </div>
+                    </div>
+                    <div class="templates-sort-bar">
+                        <span class="templates-sort-label">排序：</span>
+                        <select id="templates-sort-select">
+                            <option value="default">默认模板优先</option>
+                            <option value="newest">最新创建</option>
+                            <option value="updated">最近更新</option>
+                            <option value="name">名称 A-Z</option>
+                        </select>
+                    </div>
+                    <div class="templates-grid" id="templates-grid"></div>
                 </div>
             </section>
 
@@ -663,6 +709,139 @@
     <!-- Modals -->
     <div id="toast" class="toast hidden"></div>
 
+    <!-- Save Template Modal -->
+    <div id="save-template-modal" class="overlay hidden">
+        <div class="auth-card" style="width: 450px;">
+            <h2><i class="fas fa-save"></i> 保存为模板</h2>
+            <form id="save-template-form" class="auth-form" style="margin-top:20px;">
+                <div class="form-group">
+                    <label>模板名称 <span style="color: #94a3b8; font-size: 0.85rem;">(最多50字)</span></label>
+                    <input type="text" id="st-name" placeholder="如：菜鸟南门→13号楼402" maxlength="50" required>
+                </div>
+                <div class="template-preview">
+                    <div class="template-preview-title">
+                        <i class="fas fa-eye"></i> 预览
+                    </div>
+                    <div class="template-preview-content">
+                        <div class="tp-row"><span class="tp-label">简称：</span><span id="tp-package">-</span></div>
+                        <div class="tp-row"><span class="tp-label">驿站：</span><span id="tp-pickup">-</span></div>
+                        <div class="tp-row"><span class="tp-label">宿舍：</span><span id="tp-delivery">-</span></div>
+                        <div class="tp-row"><span class="tp-label">金额：</span><span id="tp-reward" style="color: var(--accent); font-weight: 700;">-</span></div>
+                    </div>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:20px;">
+                    <button type="button" class="btn-outline"
+                        onclick="document.getElementById('save-template-modal').classList.add('hidden')">取消</button>
+                    <button type="submit" class="btn-primary"><i class="fas fa-check"></i> 保存模板</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Select Template Modal -->
+    <div id="select-template-modal" class="overlay hidden">
+        <div class="auth-card select-template-card">
+            <div class="modal-header">
+                <h2><i class="fas fa-clone"></i> 选择模板</h2>
+                <button class="modal-close-btn" onclick="document.getElementById('select-template-modal').classList.add('hidden')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="select-template-search">
+                <i class="fas fa-search"></i>
+                <input type="text" id="sel-tpl-search" placeholder="搜索模板名称...">
+            </div>
+            <div class="select-template-list" id="select-template-list"></div>
+            <div class="select-template-footer">
+                <button type="button" class="btn-outline"
+                    onclick="document.getElementById('select-template-modal').classList.add('hidden')">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Template Modal -->
+    <div id="edit-template-modal" class="overlay hidden">
+        <div class="auth-card" style="width: 450px;">
+            <h2><i class="fas fa-edit"></i> 编辑模板</h2>
+            <form id="edit-template-form" class="auth-form" style="margin-top:20px;">
+                <input type="hidden" id="et-id">
+                <div class="form-group">
+                    <label>模板名称 <span style="color: #94a3b8; font-size: 0.85rem;">(最多50字)</span></label>
+                    <input type="text" id="et-name" maxlength="50" required>
+                </div>
+                <div class="form-group">
+                    <label>包裹简称 <span style="color: #94a3b8; font-size: 0.85rem;">(最多30字)</span></label>
+                    <input type="text" id="et-package" maxlength="30" required>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>取件驿站</label>
+                        <select id="et-pickup">
+                            <option value="菜鸟驿站-南门">菜鸟驿站-南门</option>
+                            <option value="顺丰速运-西门">顺丰速运-西门</option>
+                            <option value="京东派-北区">京东派-北区</option>
+                            <option value="中通圆通-东门">中通圆通-东门</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>送达宿舍 <span style="color: #94a3b8; font-size: 0.85rem;">(最多20字)</span></label>
+                        <input type="text" id="et-delivery" maxlength="20" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>悬赏报酬</label>
+                    <input type="text" id="et-reward" placeholder="如：5.0元" maxlength="10" required>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:20px;">
+                    <button type="button" class="btn-outline"
+                        onclick="document.getElementById('edit-template-modal').classList.add('hidden')">取消</button>
+                    <button type="submit" class="btn-primary"><i class="fas fa-save"></i> 保存修改</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Create Template Modal -->
+    <div id="create-template-modal" class="overlay hidden">
+        <div class="auth-card" style="width: 450px;">
+            <h2><i class="fas fa-plus-circle"></i> 新建模板</h2>
+            <form id="create-template-form" class="auth-form" style="margin-top:20px;">
+                <div class="form-group">
+                    <label>模板名称 <span style="color: #94a3b8; font-size: 0.85rem;">(最多50字)</span></label>
+                    <input type="text" id="ct-name" placeholder="如：日常取件路线" maxlength="50" required>
+                </div>
+                <div class="form-group">
+                    <label>包裹简称 <span style="color: #94a3b8; font-size: 0.85rem;">(最多30字)</span></label>
+                    <input type="text" id="ct-package" placeholder="如：包裹" maxlength="30" required>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>取件驿站</label>
+                        <select id="ct-pickup">
+                            <option value="菜鸟驿站-南门">菜鸟驿站-南门</option>
+                            <option value="顺丰速运-西门">顺丰速运-西门</option>
+                            <option value="京东派-北区">京东派-北区</option>
+                            <option value="中通圆通-东门">中通圆通-东门</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>送达宿舍 <span style="color: #94a3b8; font-size: 0.85rem;">(最多20字)</span></label>
+                        <input type="text" id="ct-delivery" placeholder="如：13号楼402" maxlength="20" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>悬赏报酬</label>
+                    <input type="text" id="ct-reward" placeholder="如：5.0元" maxlength="10" required>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:20px;">
+                    <button type="button" class="btn-outline"
+                        onclick="document.getElementById('create-template-modal').classList.add('hidden')">取消</button>
+                    <button type="submit" class="btn-primary"><i class="fas fa-check"></i> 创建模板</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div id="profile-modal" class="overlay hidden">
         <div class="auth-card" style="width: 350px;">
             <h2><i class="fas fa-user-edit"></i> 修改个人资料</h2>
@@ -779,7 +958,7 @@
         </div>
     </div>
 
-    <script src="script.js?v=5"></script>
+    <script src="script.js?v=6"></script>
 </body>
 
 </html>

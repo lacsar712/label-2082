@@ -912,6 +912,160 @@ static void handle_get_wallet_txns(int client_socket, char *query_string) {
               username, type_filter, month[0] ? month : "all");
 }
 
+static void handle_get_templates(int client_socket, char *query_string) {
+  char creator[50] = "";
+
+  if (query_string) {
+    char *c_ptr = strstr(query_string, "creator=");
+    if (c_ptr) {
+      char decoded[50] = {0};
+      sscanf(c_ptr + 8, "%[^& ]", decoded);
+      strncpy(creator, decoded, sizeof(creator) - 1);
+    }
+  }
+
+  char response_header[] =
+      "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+      "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(MAX_TEMPLATES * 2048);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for templates JSON");
+    return;
+  }
+  memset(json, 0, MAX_TEMPLATES * 2048);
+  get_templates_json(json, strlen(creator) > 0 ? creator : NULL);
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "Templates fetched - creator:%s",
+              creator[0] ? creator : "all");
+}
+
+static void handle_create_template(int client_socket, char *body) {
+  char creator[50] = "", template_name[100] = "";
+  char package_info[100] = "", pickup_addr[100] = "";
+  char delivery_addr[100] = "", reward[20] = "";
+
+  parse_json_string(body, "creator", creator, sizeof(creator));
+  parse_json_string(body, "templateName", template_name, sizeof(template_name));
+  parse_json_string(body, "package", package_info, sizeof(package_info));
+  parse_json_string(body, "pickup", pickup_addr, sizeof(pickup_addr));
+  parse_json_string(body, "delivery", delivery_addr, sizeof(delivery_addr));
+  parse_json_string(body, "reward", reward, sizeof(reward));
+
+  if (strlen(creator) == 0 || strlen(template_name) == 0) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少必填字段\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  int id = create_template(creator, template_name, package_info,
+                            pickup_addr, delivery_addr, reward);
+  if (id > 0) {
+    char resp[256];
+    snprintf(resp, sizeof(resp),
+             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+             "{\"status\":\"success\",\"id\":%d}",
+             id);
+    send(client_socket, resp, strlen(resp), 0);
+  } else {
+    char resp[] = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"创建模板失败\"}";
+    send(client_socket, resp, strlen(resp), 0);
+  }
+}
+
+static void handle_update_template(int client_socket, char *body) {
+  int id = parse_json_int(body, "id");
+  char creator[50] = "", template_name[100] = "";
+  char package_info[100] = "", pickup_addr[100] = "";
+  char delivery_addr[100] = "", reward[20] = "";
+
+  parse_json_string(body, "creator", creator, sizeof(creator));
+  parse_json_string(body, "templateName", template_name, sizeof(template_name));
+  parse_json_string(body, "package", package_info, sizeof(package_info));
+  parse_json_string(body, "pickup", pickup_addr, sizeof(pickup_addr));
+  parse_json_string(body, "delivery", delivery_addr, sizeof(delivery_addr));
+  parse_json_string(body, "reward", reward, sizeof(reward));
+
+  if (id == -1 || strlen(creator) == 0) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少必填字段\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  int result = update_template(id, creator,
+                             strlen(template_name) > 0 ? template_name : NULL,
+                             strlen(package_info) > 0 ? package_info : NULL,
+                             strlen(pickup_addr) > 0 ? pickup_addr : NULL,
+                             strlen(delivery_addr) > 0 ? delivery_addr : NULL,
+                             strlen(reward) > 0 ? reward : NULL);
+
+  if (result == 0) {
+    char response[] = "HTTP/1.1 200 OK\r\nContent-Type: "
+                      "application/json\r\n\r\n{\"status\":\"success\"}";
+    send(client_socket, response, strlen(response), 0);
+  } else if (result == -2) {
+    char resp[] = "HTTP/1.1 403 Forbidden\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"无权限操作\"}";
+    send(client_socket, resp, strlen(resp), 0);
+  } else {
+    char resp[] = "HTTP/1.1 404 Not Found\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"模板不存在\"}";
+    send(client_socket, resp, strlen(resp), 0);
+  }
+}
+
+static void handle_delete_template(int client_socket, char *body) {
+  int id = parse_json_int(body, "id");
+  char creator[50] = "";
+  parse_json_string(body, "creator", creator, sizeof(creator));
+
+  if (id == -1 || strlen(creator) == 0) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少必填字段\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  int result = delete_template(id, creator);
+  if (result == 0) {
+    char response[] = "HTTP/1.1 200 OK\r\nContent-Type: "
+                      "application/json\r\n\r\n{\"status\":\"success\"}";
+    send(client_socket, response, strlen(response), 0);
+  } else if (result == -2) {
+    char resp[] = "HTTP/1.1 403 Forbidden\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"无权限操作\"}";
+    send(client_socket, resp, strlen(resp), 0);
+  } else {
+    char resp[] = "HTTP/1.1 404 Not Found\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"模板不存在\"}";
+    send(client_socket, resp, strlen(resp), 0);
+  }
+}
+
+static void handle_set_default_template(int client_socket, char *body) {
+  int id = parse_json_int(body, "id");
+  char creator[50] = "";
+  parse_json_string(body, "creator", creator, sizeof(creator));
+
+  if (id == -1 || strlen(creator) == 0) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少必填字段\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  set_default_template(id, creator);
+  char response[] = "HTTP/1.1 200 OK\r\nContent-Type: "
+                    "application/json\r\n\r\n{\"status\":\"success\"}";
+  send(client_socket, response, strlen(response), 0);
+}
+
 void handle_request(int client_socket) {
   char buffer[BUFFER_SIZE];
   memset(buffer, 0, BUFFER_SIZE);
@@ -1053,6 +1207,34 @@ void handle_request(int client_socket) {
     char *path_start = strstr(buffer, "GET /api/wallet/transactions");
     char *q = strstr(path_start, "?");
     handle_get_wallet_txns(client_socket, q);
+  } else if (strstr(buffer, "GET /api/templates")) {
+    char *path_start = strstr(buffer, "GET /api/templates");
+    char *q = strstr(path_start, "?");
+    handle_get_templates(client_socket, q);
+  } else if (strstr(buffer, "POST /api/templates")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_create_template(client_socket, body);
+    }
+  } else if (strstr(buffer, "POST /api/templates_update")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_update_template(client_socket, body);
+    }
+  } else if (strstr(buffer, "POST /api/templates_delete")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_delete_template(client_socket, body);
+    }
+  } else if (strstr(buffer, "POST /api/templates_default")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_set_default_template(client_socket, body);
+    }
   } else {
     log_message(LOG_WARN, "404 Not Found: %.50s", buffer);
     char response[] = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";

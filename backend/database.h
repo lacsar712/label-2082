@@ -20,6 +20,9 @@ extern int feedback_next_id;
 extern WalletTransaction wallet_txns[MAX_WALLET_TXNS];
 extern int wallet_txn_count;
 extern int wallet_txn_next_id;
+extern TaskTemplate templates[MAX_TEMPLATES];
+extern int template_count;
+extern int template_next_id;
 
 void save_data();
 void load_data();
@@ -32,5 +35,13 @@ int record_wallet_transaction(const char *username, const char *type, double amo
 void get_wallet_txns_json(char *json, const char *username, const char *type_filter, const char *month);
 void get_wallet_summary_json(char *json, const char *username);
 double get_user_balance(const char *username);
+
+void get_templates_json(char *json, const char *creator);
+int create_template(const char *creator, const char *template_name, const char *package_info,
+                    const char *pickup_addr, const char *delivery_addr, const char *reward);
+int update_template(int id, const char *creator, const char *template_name, const char *package_info,
+                    const char *pickup_addr, const char *delivery_addr, const char *reward);
+int delete_template(int id, const char *creator);
+int set_default_template(int id, const char *creator);
 
 #endif

@@ -28,6 +28,13 @@ document.addEventListener('DOMContentLoaded', () => {
         month: ''
     };
     let expandedTxnIds = new Set();
+    let templatesState = {
+        sort: 'default',
+        keyword: '',
+        allTemplates: []
+    };
+    let selTplSearchTimer = null;
+    let tplSearchTimer = null;
 
     const elements = {
         authOverlay: document.getElementById('auth-overlay'),
@@ -107,7 +114,35 @@ document.addEventListener('DOMContentLoaded', () => {
         walletTab: document.querySelector('[data-tab="wallet"]'),
         profileWalletCard: document.querySelector('.profile-wallet-card'),
         pkgUseBalance: document.getElementById('pkg-use-balance'),
-        pkgBalanceAvailable: document.getElementById('pkg-balance-available')
+        pkgBalanceAvailable: document.getElementById('pkg-balance-available'),
+        btnFromTemplate: document.getElementById('btn-from-template'),
+        btnSaveTemplate: document.getElementById('btn-save-template'),
+        saveTemplateModal: document.getElementById('save-template-modal'),
+        saveTemplateForm: document.getElementById('save-template-form'),
+        stName: document.getElementById('st-name'),
+        tpPackage: document.getElementById('tp-package'),
+        tpPickup: document.getElementById('tp-pickup'),
+        tpDelivery: document.getElementById('tp-delivery'),
+        tpReward: document.getElementById('tp-reward'),
+        selectTemplateModal: document.getElementById('select-template-modal'),
+        selectTemplateList: document.getElementById('select-template-list'),
+        selTplSearch: document.getElementById('sel-tpl-search'),
+        editTemplateModal: document.getElementById('edit-template-modal'),
+        editTemplateForm: document.getElementById('edit-template-form'),
+        etId: document.getElementById('et-id'),
+        etName: document.getElementById('et-name'),
+        etPackage: document.getElementById('et-package'),
+        etPickup: document.getElementById('et-pickup'),
+        etDelivery: document.getElementById('et-delivery'),
+        etReward: document.getElementById('et-reward'),
+        createTemplateModal: document.getElementById('create-template-modal'),
+        createTemplateForm: document.getElementById('create-template-form'),
+        templatesGrid: document.getElementById('templates-grid'),
+        templatesSearchInput: document.getElementById('templates-search-input'),
+        templatesSortSelect: document.getElementById('templates-sort-select'),
+        btnCreateTemplateFromLib: document.getElementById('btn-create-template-from-lib'),
+        defaultTemplateBanner: document.getElementById('default-template-banner'),
+        defaultTemplateName: document.getElementById('default-template-name')
     };
 
     // --- Authentication ---
@@ -255,6 +290,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (tab === 'wallet') {
                 loadWalletSummary();
                 loadWalletTransactions();
+            }
+            if (tab === 'templates') {
+                fetchTemplates();
+            }
+            if (tab === 'post-task') {
+                applyDefaultTemplateIfAny();
             }
         };
     });
@@ -1954,6 +1995,540 @@ document.addEventListener('DOMContentLoaded', () => {
             document.querySelector('[data-tab="wallet"]').click();
         };
     }
+
+    // --- Template Library Logic ---
+    async function fetchTemplates() {
+        try {
+            const resp = await fetch(`/api/templates?creator=${encodeURIComponent(currentUser.username)}`);
+            const templates = await resp.json();
+            templatesState.allTemplates = templates;
+            renderTemplates();
+        } catch (err) {
+            console.error('Failed to fetch templates:', err);
+            showToast('加载模板库失败');
+        }
+    }
+
+    function sortTemplates(templates) {
+        const sorted = [...templates];
+        switch (templatesState.sort) {
+            case 'newest':
+                sorted.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                break;
+            case 'updated':
+                sorted.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+                break;
+            case 'name':
+                sorted.sort((a, b) => a.templateName.localeCompare(b.templateName, 'zh'));
+                break;
+            case 'default':
+            default:
+                sorted.sort((a, b) => (b.isDefault - a.isDefault) || (new Date(b.createdAt) - new Date(a.createdAt)));
+                break;
+        }
+        return sorted;
+    }
+
+    function filterTemplates(templates) {
+        if (!templatesState.keyword) return templates;
+        const kw = templatesState.keyword.toLowerCase();
+        return templates.filter(t =>
+            t.templateName.toLowerCase().includes(kw) ||
+            t.package.toLowerCase().includes(kw) ||
+            t.pickup.toLowerCase().includes(kw) ||
+            t.delivery.toLowerCase().includes(kw)
+        );
+    }
+
+    function renderTemplates() {
+        if (!elements.templatesGrid) return;
+
+        let templates = filterTemplates(templatesState.allTemplates);
+        templates = sortTemplates(templates);
+
+        if (templates.length === 0) {
+            const isSearch = templatesState.keyword || templatesState.allTemplates.length === 0;
+            elements.templatesGrid.innerHTML = `
+                <div class="templates-empty" style="grid-column: 1/-1;">
+                    <i class="fas fa-folder-open"></i>
+                    <h3>${isSearch && templatesState.allTemplates.length > 0 ? '未找到匹配的模板' : '还没有任何模板'}</h3>
+                    <p>${isSearch && templatesState.allTemplates.length > 0 ? '尝试调整搜索关键词' : '点击右上角"新建模板"或在发布页将常用路线保存为模板'}</p>
+                    ${templatesState.allTemplates.length === 0 ? `<button class="btn-primary" style="margin-top:16px;" onclick="document.getElementById('btn-create-template-from-lib').click()"><i class="fas fa-plus"></i> 创建第一个模板</button>` : ''}
+                </div>
+            `;
+            return;
+        }
+
+        elements.templatesGrid.innerHTML = templates.map(tpl => {
+            const stationIconMap = {
+                '菜鸟': 'fa-box',
+                '顺丰': 'fa-truck-fast',
+                '京东': 'fa-store',
+                '中通': 'fa-parachute-box'
+            };
+            let stationIcon = 'fa-box';
+            for (const [k, v] of Object.entries(stationIconMap)) {
+                if (tpl.pickup.includes(k)) { stationIcon = v; break; }
+            }
+
+            return `
+                <div class="template-card ${tpl.isDefault ? 'default' : ''}" data-id="${tpl.id}">
+                    <div class="template-card-header">
+                        <div class="template-card-title">
+                            ${tpl.isDefault ? `<span class="tpl-default-badge"><i class="fas fa-star"></i> 默认</span>` : ''}
+                            <h3 class="tpl-name">${escapeHtml(tpl.templateName)}</h3>
+                        </div>
+                        <div class="template-card-menu">
+                            <button class="tpl-menu-btn" title="更多操作" onclick="toggleTplMenu(${tpl.id}, event)">
+                                <i class="fas fa-ellipsis-v"></i>
+                            </button>
+                            <div class="tpl-dropdown" data-menu-id="${tpl.id}">
+                                <button class="tpl-dropdown-item" onclick="editTemplate(${tpl.id})">
+                                    <i class="fas fa-edit"></i> 编辑
+                                </button>
+                                <button class="tpl-dropdown-item" onclick="renameTemplate(${tpl.id})">
+                                    <i class="fas fa-pen"></i> 重命名
+                                </button>
+                                ${!tpl.isDefault ? `<button class="tpl-dropdown-item" onclick="setDefaultTemplate(${tpl.id})">
+                                    <i class="fas fa-star"></i> 设为默认
+                                </button>` : `<button class="tpl-dropdown-item" onclick="unsetDefaultTemplate(${tpl.id})">
+                                    <i class="fas fa-star-half-alt"></i> 取消默认
+                                </button>`}
+                                <button class="tpl-dropdown-item danger" onclick="deleteTemplate(${tpl.id})">
+                                    <i class="fas fa-trash"></i> 删除
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="template-card-body">
+                        <div class="tpl-info-row">
+                            <div class="tpl-info-icon"><i class="fas fa-tag"></i></div>
+                            <div class="tpl-info-content">
+                                <span class="tpl-info-label">简称</span>
+                                <span class="tpl-info-value">${escapeHtml(tpl.package || '-')}</span>
+                            </div>
+                        </div>
+                        <div class="tpl-info-row">
+                            <div class="tpl-info-icon pickup"><i class="fas ${stationIcon}"></i></div>
+                            <div class="tpl-info-content">
+                                <span class="tpl-info-label">驿站</span>
+                                <span class="tpl-info-value">${escapeHtml(tpl.pickup || '-')}</span>
+                            </div>
+                        </div>
+                        <div class="tpl-info-row">
+                            <div class="tpl-info-icon delivery"><i class="fas fa-door-open"></i></div>
+                            <div class="tpl-info-content">
+                                <span class="tpl-info-label">送达宿舍</span>
+                                <span class="tpl-info-value">${escapeHtml(tpl.delivery || '-')}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="template-card-footer">
+                        <div class="tpl-reward">
+                            <i class="fas fa-coins" style="color:#f59e0b;"></i>
+                            <span class="tpl-reward-value">${escapeHtml(tpl.reward || '-')}</span>
+                        </div>
+                        <div class="tpl-actions">
+                            <button class="tpl-use-btn" onclick="useTemplate(${tpl.id})">
+                                <i class="fas fa-clone"></i> 使用
+                            </button>
+                        </div>
+                    </div>
+                    <div class="tpl-meta">
+                        <span>创建：${formatDate(tpl.createdAt)}</span>
+                        ${tpl.updatedAt !== tpl.createdAt ? `<span>更新：${formatDate(tpl.updatedAt)}</span>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        document.addEventListener('click', closeAllTplMenus);
+    }
+
+    function closeAllTplMenus() {
+        document.querySelectorAll('.tpl-dropdown.show').forEach(dd => dd.classList.remove('show'));
+    }
+
+    window.toggleTplMenu = (id, e) => {
+        e.stopPropagation();
+        const menu = document.querySelector(`.tpl-dropdown[data-menu-id="${id}"]`);
+        if (!menu) return;
+        const isShow = menu.classList.contains('show');
+        closeAllTplMenus();
+        if (!isShow) menu.classList.add('show');
+    };
+
+    function fillOrderFormWithTemplate(tpl) {
+        document.getElementById('pkg-name').value = tpl.package || '';
+        document.getElementById('pkg-pickup').value = tpl.pickup || document.getElementById('pkg-pickup').options[0].value;
+        document.getElementById('pkg-delivery').value = tpl.delivery || '';
+        document.getElementById('pkg-reward').value = tpl.reward || '';
+    }
+
+    window.useTemplate = async (id) => {
+        const tpl = templatesState.allTemplates.find(t => t.id === id);
+        if (!tpl) return;
+        fillOrderFormWithTemplate(tpl);
+        document.querySelector('[data-tab="post-task"]').click();
+        showToast(`已使用模板「${tpl.templateName}」`);
+    };
+
+    window.editTemplate = async (id) => {
+        closeAllTplMenus();
+        const tpl = templatesState.allTemplates.find(t => t.id === id);
+        if (!tpl) return;
+        elements.etId.value = tpl.id;
+        elements.etName.value = tpl.templateName;
+        elements.etPackage.value = tpl.package;
+        elements.etPickup.value = tpl.pickup;
+        elements.etDelivery.value = tpl.delivery;
+        elements.etReward.value = tpl.reward;
+        elements.editTemplateModal.classList.remove('hidden');
+    };
+
+    window.renameTemplate = async (id) => {
+        closeAllTplMenus();
+        const tpl = templatesState.allTemplates.find(t => t.id === id);
+        if (!tpl) return;
+        const newName = prompt('请输入新的模板名称：', tpl.templateName);
+        if (!newName || !newName.trim() || newName === tpl.templateName) return;
+
+        try {
+            const resp = await fetch('/api/templates_update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id, creator: currentUser.username,
+                    templateName: newName.trim()
+                })
+            });
+            const data = await resp.json();
+            if (resp.ok && data.status === 'success') {
+                showToast('模板已重命名');
+                fetchTemplates();
+            } else {
+                showToast(data.message || '重命名失败');
+            }
+        } catch (err) {
+            showToast('重命名失败');
+        }
+    };
+
+    window.setDefaultTemplate = async (id) => {
+        closeAllTplMenus();
+        try {
+            const resp = await fetch('/api/templates_default', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, creator: currentUser.username })
+            });
+            const data = await resp.json();
+            if (resp.ok && data.status === 'success') {
+                showToast('已设为默认模板');
+                fetchTemplates();
+            } else {
+                showToast(data.message || '设置失败');
+            }
+        } catch (err) {
+            showToast('设置失败');
+        }
+    };
+
+    window.unsetDefaultTemplate = async (id) => {
+        closeAllTplMenus();
+        try {
+            const resp = await fetch('/api/templates_default', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: -1, creator: currentUser.username })
+            });
+            const data = await resp.json();
+            if (resp.ok && data.status === 'success') {
+                showToast('已取消默认模板');
+                fetchTemplates();
+            } else {
+                showToast(data.message || '操作失败');
+            }
+        } catch (err) {
+            showToast('操作失败');
+        }
+    };
+
+    window.deleteTemplate = async (id) => {
+        closeAllTplMenus();
+        if (!confirm('确定要删除这个模板吗？此操作不可撤销。')) return;
+        try {
+            const resp = await fetch('/api/templates_delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, creator: currentUser.username })
+            });
+            const data = await resp.json();
+            if (resp.ok && data.status === 'success') {
+                showToast('模板已删除');
+                fetchTemplates();
+            } else {
+                showToast(data.message || '删除失败');
+            }
+        } catch (err) {
+            showToast('删除失败');
+        }
+    };
+
+    if (elements.templatesSortSelect) {
+        elements.templatesSortSelect.onchange = () => {
+            templatesState.sort = elements.templatesSortSelect.value;
+            renderTemplates();
+        };
+    }
+
+    if (elements.templatesSearchInput) {
+        elements.templatesSearchInput.oninput = () => {
+            clearTimeout(tplSearchTimer);
+            tplSearchTimer = setTimeout(() => {
+                templatesState.keyword = elements.templatesSearchInput.value.trim();
+                renderTemplates();
+            }, 300);
+        };
+    }
+
+    if (elements.btnCreateTemplateFromLib) {
+        elements.btnCreateTemplateFromLib.onclick = () => {
+            elements.createTemplateForm.reset();
+            elements.createTemplateModal.classList.remove('hidden');
+        };
+    }
+
+    if (elements.createTemplateForm) {
+        elements.createTemplateForm.onsubmit = async (e) => {
+            e.preventDefault();
+            const payload = {
+                creator: currentUser.username,
+                templateName: document.getElementById('ct-name').value.trim(),
+                package: document.getElementById('ct-package').value.trim(),
+                pickup: document.getElementById('ct-pickup').value,
+                delivery: document.getElementById('ct-delivery').value.trim(),
+                reward: document.getElementById('ct-reward').value.trim()
+            };
+            if (!payload.templateName || !payload.package || !payload.delivery || !payload.reward) {
+                showToast('请填写所有必填字段');
+                return;
+            }
+            try {
+                const resp = await fetch('/api/templates', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await resp.json();
+                if (resp.ok && data.status === 'success') {
+                    showToast('模板创建成功！');
+                    elements.createTemplateModal.classList.add('hidden');
+                    elements.createTemplateForm.reset();
+                    fetchTemplates();
+                } else {
+                    showToast(data.message || '创建失败');
+                }
+            } catch (err) {
+                showToast('创建失败');
+            }
+        };
+    }
+
+    if (elements.editTemplateForm) {
+        elements.editTemplateForm.onsubmit = async (e) => {
+            e.preventDefault();
+            const id = parseInt(elements.etId.value);
+            const payload = {
+                id,
+                creator: currentUser.username,
+                templateName: elements.etName.value.trim(),
+                package: elements.etPackage.value.trim(),
+                pickup: elements.etPickup.value,
+                delivery: elements.etDelivery.value.trim(),
+                reward: elements.etReward.value.trim()
+            };
+            if (!payload.templateName || !payload.package || !payload.delivery || !payload.reward) {
+                showToast('请填写所有必填字段');
+                return;
+            }
+            try {
+                const resp = await fetch('/api/templates_update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await resp.json();
+                if (resp.ok && data.status === 'success') {
+                    showToast('模板已更新！');
+                    elements.editTemplateModal.classList.add('hidden');
+                    fetchTemplates();
+                } else {
+                    showToast(data.message || '更新失败');
+                }
+            } catch (err) {
+                showToast('更新失败');
+            }
+        };
+    }
+
+    // --- Post Task Page Template Integration ---
+    async function applyDefaultTemplateIfAny() {
+        try {
+            const resp = await fetch(`/api/templates?creator=${encodeURIComponent(currentUser.username)}`);
+            const templates = await resp.json();
+            const defaultTpl = templates.find(t => t.isDefault);
+            if (defaultTpl) {
+                const nameEl = document.getElementById('pkg-name');
+                if (nameEl && !nameEl.value) {
+                    fillOrderFormWithTemplate(defaultTpl);
+                    if (elements.defaultTemplateBanner) {
+                        elements.defaultTemplateName.textContent = `「${defaultTpl.templateName}」`;
+                        elements.defaultTemplateBanner.classList.remove('hidden');
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Failed to apply default template:', err);
+        }
+    }
+
+    if (elements.btnSaveTemplate) {
+        elements.btnSaveTemplate.onclick = () => {
+            const pkgName = document.getElementById('pkg-name').value.trim();
+            const pkgPickup = document.getElementById('pkg-pickup').value;
+            const pkgDelivery = document.getElementById('pkg-delivery').value.trim();
+            const pkgReward = document.getElementById('pkg-reward').value.trim();
+
+            if (!pkgName || !pkgDelivery || !pkgReward) {
+                showToast('请先填写完整的表单内容');
+                return;
+            }
+
+            elements.stName.value = '';
+            elements.tpPackage.textContent = pkgName;
+            elements.tpPickup.textContent = pkgPickup;
+            elements.tpDelivery.textContent = pkgDelivery;
+            elements.tpReward.textContent = pkgReward;
+            elements.saveTemplateModal.classList.remove('hidden');
+        };
+    }
+
+    if (elements.saveTemplateForm) {
+        elements.saveTemplateForm.onsubmit = async (e) => {
+            e.preventDefault();
+            const payload = {
+                creator: currentUser.username,
+                templateName: elements.stName.value.trim(),
+                package: document.getElementById('pkg-name').value.trim(),
+                pickup: document.getElementById('pkg-pickup').value,
+                delivery: document.getElementById('pkg-delivery').value.trim(),
+                reward: document.getElementById('pkg-reward').value.trim()
+            };
+            if (!payload.templateName) {
+                showToast('请输入模板名称');
+                return;
+            }
+            try {
+                const resp = await fetch('/api/templates', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await resp.json();
+                if (resp.ok && data.status === 'success') {
+                    showToast('模板保存成功！可在模板库中管理');
+                    elements.saveTemplateModal.classList.add('hidden');
+                    elements.saveTemplateForm.reset();
+                } else {
+                    showToast(data.message || '保存失败');
+                }
+            } catch (err) {
+                showToast('保存失败');
+            }
+        };
+    }
+
+    if (elements.btnFromTemplate) {
+        elements.btnFromTemplate.onclick = async () => {
+            await openSelectTemplateModal();
+        };
+    }
+
+    async function openSelectTemplateModal() {
+        try {
+            const resp = await fetch(`/api/templates?creator=${encodeURIComponent(currentUser.username)}`);
+            const templates = await resp.json();
+            if (elements.selTplSearch) elements.selTplSearch.value = '';
+            renderSelectTemplateList(templates);
+            elements.selectTemplateModal.classList.remove('hidden');
+        } catch (err) {
+            console.error('Failed to load templates for select:', err);
+            showToast('加载模板列表失败');
+        }
+    }
+
+    function renderSelectTemplateList(templates, keyword = '') {
+        if (!elements.selectTemplateList) return;
+
+        let filtered = templates;
+        if (keyword) {
+            const kw = keyword.toLowerCase();
+            filtered = templates.filter(t =>
+                t.templateName.toLowerCase().includes(kw) ||
+                t.package.toLowerCase().includes(kw) ||
+                t.pickup.toLowerCase().includes(kw) ||
+                t.delivery.toLowerCase().includes(kw)
+            );
+        }
+
+        filtered.sort((a, b) => (b.isDefault - a.isDefault) || (new Date(b.createdAt) - new Date(a.createdAt)));
+
+        if (filtered.length === 0) {
+            elements.selectTemplateList.innerHTML = `
+                <div class="sel-tpl-empty">
+                    <i class="fas fa-inbox"></i>
+                    <h3>${keyword ? '没有匹配的模板' : '还没有任何模板'}</h3>
+                    <p>${keyword ? '尝试其他关键词' : '先去发布页保存常用路线为模板吧'}</p>
+                </div>
+            `;
+            return;
+        }
+
+        elements.selectTemplateList.innerHTML = filtered.map(tpl => `
+            <div class="sel-tpl-item ${tpl.isDefault ? 'default' : ''}" onclick="applySelectedTemplate(${tpl.id})">
+                ${tpl.isDefault ? `<div class="sel-tpl-default-tag"><i class="fas fa-star"></i> 默认</div>` : ''}
+                <div class="sel-tpl-main">
+                    <div class="sel-tpl-name">${escapeHtml(tpl.templateName)}</div>
+                    <div class="sel-tpl-info">
+                        <span><i class="fas fa-tag"></i> ${escapeHtml(tpl.package || '-')}</span>
+                        <span><i class="fas fa-map-marker-alt"></i> ${escapeHtml(tpl.pickup || '-')}</span>
+                        <span><i class="fas fa-door-open"></i> ${escapeHtml(tpl.delivery || '-')}</span>
+                    </div>
+                </div>
+                <div class="sel-tpl-reward">${escapeHtml(tpl.reward || '-')}</div>
+            </div>
+        `).join('');
+
+        window._selTemplates = templates;
+    }
+
+    if (elements.selTplSearch) {
+        elements.selTplSearch.oninput = () => {
+            clearTimeout(selTplSearchTimer);
+            selTplSearchTimer = setTimeout(() => {
+                renderSelectTemplateList(window._selTemplates || [], elements.selTplSearch.value.trim());
+            }, 250);
+        };
+    }
+
+    window.applySelectedTemplate = (id) => {
+        const tpl = (window._selTemplates || []).find(t => t.id === id);
+        if (!tpl) return;
+        fillOrderFormWithTemplate(tpl);
+        elements.selectTemplateModal.classList.add('hidden');
+        showToast(`已使用模板「${tpl.templateName}」`);
+    };
 
     // Init
     updateUIForLogin();

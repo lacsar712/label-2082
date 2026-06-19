@@ -22,6 +22,9 @@ int feedback_next_id = 1;
 WalletTransaction wallet_txns[MAX_WALLET_TXNS];
 int wallet_txn_count = 0;
 int wallet_txn_next_id = 1;
+TaskTemplate templates[MAX_TEMPLATES];
+int template_count = 0;
+int template_next_id = 1;
 
 const char* get_user_real_name(const char *username) {
   for (int i = 0; i < user_count; i++) {
@@ -373,6 +376,17 @@ void save_data() {
   } else {
     log_message(LOG_ERROR, "Failed to save wallet data");
   }
+
+  FILE *f7 = fopen("data_templates.bin", "wb");
+  if (f7) {
+    fwrite(&template_count, sizeof(int), 1, f7);
+    fwrite(&template_next_id, sizeof(int), 1, f7);
+    fwrite(templates, sizeof(TaskTemplate), template_count, f7);
+    fclose(f7);
+    log_message(LOG_INFO, "Templates data saved successfully");
+  } else {
+    log_message(LOG_ERROR, "Failed to save templates data");
+  }
 }
 
 static void backfill_order_data() {
@@ -611,6 +625,188 @@ void get_stations_json(char *json) {
   strcat(json, "]");
 }
 
+static void escape_template_json(char *dst, const char *src, int max_len) {
+  int j = 0;
+  for (int i = 0; src[i] && j < max_len - 1; i++) {
+    if (src[i] == '"') {
+      dst[j++] = '\\';
+      dst[j++] = '"';
+    } else if (src[i] == '\\') {
+      dst[j++] = '\\';
+      dst[j++] = '\\';
+    } else if (src[i] == '\n') {
+      dst[j++] = '\\';
+      dst[j++] = 'n';
+    } else if (src[i] == '\r') {
+      dst[j++] = '\\';
+      dst[j++] = 'r';
+    } else if (src[i] == '\t') {
+      dst[j++] = '\\';
+      dst[j++] = 't';
+    } else {
+      dst[j++] = src[i];
+    }
+  }
+  dst[j] = '\0';
+}
+
+void get_templates_json(char *json, const char *creator) {
+  strcat(json, "[");
+  int first = 1;
+
+  for (int i = 0; i < template_count; i++) {
+    if (creator && strlen(creator) > 0 &&
+        strcmp(templates[i].creator, creator) != 0)
+      continue;
+
+    if (!first)
+      strcat(json, ",");
+
+    char esc_name[200], esc_pkg[200], esc_pick[200], esc_deliv[200];
+    escape_template_json(esc_name, templates[i].template_name, sizeof(esc_name));
+    escape_template_json(esc_pkg, templates[i].package_info, sizeof(esc_pkg));
+    escape_template_json(esc_pick, templates[i].pickup_addr, sizeof(esc_pick));
+    escape_template_json(esc_deliv, templates[i].delivery_addr, sizeof(esc_deliv));
+
+    char item[2048];
+    sprintf(item,
+            "{\"id\":%d,\"creator\":\"%s\",\"templateName\":\"%s\","
+            "\"package\":\"%s\",\"pickup\":\"%s\",\"delivery\":\"%s\","
+            "\"reward\":\"%s\",\"isDefault\":%d,"
+            "\"createdAt\":\"%s\",\"updatedAt\":\"%s\"}",
+            templates[i].id, templates[i].creator, esc_name,
+            esc_pkg, esc_pick, esc_deliv,
+            templates[i].reward, templates[i].is_default,
+            templates[i].created_at, templates[i].updated_at);
+    strcat(json, item);
+    first = 0;
+  }
+  strcat(json, "]");
+}
+
+int create_template(const char *creator, const char *template_name, const char *package_info,
+                    const char *pickup_addr, const char *delivery_addr, const char *reward) {
+  if (template_count >= MAX_TEMPLATES) {
+    log_message(LOG_WARN, "Template limit reached");
+    return -1;
+  }
+  if (!creator || strlen(creator) == 0 || !template_name || strlen(template_name) == 0) {
+    return -1;
+  }
+
+  TaskTemplate *t = &templates[template_count++];
+  t->id = template_next_id++;
+  strncpy(t->creator, creator, sizeof(t->creator) - 1);
+  strncpy(t->template_name, template_name, sizeof(t->template_name) - 1);
+  strncpy(t->package_info, package_info ? package_info : "", sizeof(t->package_info) - 1);
+  strncpy(t->pickup_addr, pickup_addr ? pickup_addr : "", sizeof(t->pickup_addr) - 1);
+  strncpy(t->delivery_addr, delivery_addr ? delivery_addr : "", sizeof(t->delivery_addr) - 1);
+  strncpy(t->reward, reward ? reward : "", sizeof(t->reward) - 1);
+
+  int has_default = 0;
+  for (int i = 0; i < template_count - 1; i++) {
+    if (strcmp(templates[i].creator, creator) == 0 && templates[i].is_default) {
+      has_default = 1;
+      break;
+    }
+  }
+  t->is_default = has_default ? 0 : 1;
+
+  time_t tm = time(NULL);
+  struct tm *tm_info = localtime(&tm);
+  strftime(t->created_at, sizeof(t->created_at), "%Y-%m-%d %H:%M:%S", tm_info);
+  strcpy(t->updated_at, t->created_at);
+
+  save_data();
+  log_message(LOG_INFO, "Template created: ID=%d by %s name=%s", t->id, creator, template_name);
+  return t->id;
+}
+
+int update_template(int id, const char *creator, const char *template_name, const char *package_info,
+                    const char *pickup_addr, const char *delivery_addr, const char *reward) {
+  for (int i = 0; i < template_count; i++) {
+    if (templates[i].id == id) {
+      if (strcmp(templates[i].creator, creator) != 0) {
+        log_message(LOG_WARN, "Update template forbidden: user %s not creator of %d", creator, id);
+        return -2;
+      }
+
+      char tmp[1024];
+      if (template_name && strlen(template_name) > 0) {
+        strncpy(templates[i].template_name, template_name, sizeof(templates[i].template_name) - 1);
+      }
+      if (package_info) {
+        strncpy(templates[i].package_info, package_info, sizeof(templates[i].package_info) - 1);
+      }
+      if (pickup_addr) {
+        strncpy(templates[i].pickup_addr, pickup_addr, sizeof(templates[i].pickup_addr) - 1);
+      }
+      if (delivery_addr) {
+        strncpy(templates[i].delivery_addr, delivery_addr, sizeof(templates[i].delivery_addr) - 1);
+      }
+      if (reward) {
+        strncpy(templates[i].reward, reward, sizeof(templates[i].reward) - 1);
+      }
+
+      time_t tm = time(NULL);
+      struct tm *tm_info = localtime(&tm);
+      strftime(templates[i].updated_at, sizeof(templates[i].updated_at),
+               "%Y-%m-%d %H:%M:%S", tm_info);
+
+      save_data();
+      log_message(LOG_INFO, "Template updated: ID=%d", id);
+      return 0;
+    }
+  }
+  log_message(LOG_WARN, "Template not found for update: ID=%d", id);
+  return -1;
+}
+
+int delete_template(int id, const char *creator) {
+  for (int i = 0; i < template_count; i++) {
+    if (templates[i].id == id) {
+      if (strcmp(templates[i].creator, creator) != 0) {
+        log_message(LOG_WARN, "Delete template forbidden: user %s not creator of %d", creator, id);
+        return -2;
+
+      }
+
+      int was_default = templates[i].is_default;
+
+      for (int j = i; j < template_count - 1; j++) {
+        templates[j] = templates[j + 1];
+      }
+      template_count--;
+
+      if (was_default && template_count > 0) {
+        for (int j = 0; j < template_count; j++) {
+          if (strcmp(templates[j].creator, creator) == 0) {
+            templates[j].is_default = 1;
+            break;
+          }
+        }
+      }
+
+      save_data();
+      log_message(LOG_INFO, "Template deleted: ID=%d", id);
+      return 0;
+    }
+  }
+  log_message(LOG_WARN, "Template not found for delete: ID=%d", id);
+  return -1;
+}
+
+int set_default_template(int id, const char *creator) {
+  for (int i = 0; i < template_count; i++) {
+    if (strcmp(templates[i].creator, creator) == 0) {
+      templates[i].is_default = (templates[i].id == id) ? 1 : 0;
+    }
+  }
+  save_data();
+  log_message(LOG_INFO, "Default template set: ID=%d by %s", id, creator);
+  return 0;
+}
+
 void load_data() {
   FILE *f1 = fopen("data_orders.bin", "rb");
   if (f1) {
@@ -675,6 +871,17 @@ void load_data() {
     log_message(LOG_INFO, "Loaded %d wallet transactions", wallet_txn_count);
   } else {
     log_message(LOG_WARN, "No existing wallet data found");
+  }
+
+  FILE *f7 = fopen("data_templates.bin", "rb");
+  if (f7) {
+    fread(&template_count, sizeof(int), 1, f7);
+    fread(&template_next_id, sizeof(int), 1, f7);
+    fread(templates, sizeof(TaskTemplate), template_count, f7);
+    fclose(f7);
+    log_message(LOG_INFO, "Loaded %d templates", template_count);
+  } else {
+    log_message(LOG_WARN, "No existing templates data found");
   }
 
   if (user_count == 0) {

@@ -18,6 +18,11 @@ document.addEventListener('DOMContentLoaded', () => {
         filter: 'all'
     };
     let notifPollTimer = null;
+    let faqState = {
+        category: '全部',
+        keyword: ''
+    };
+    let helpSearchTimer = null;
 
     const elements = {
         authOverlay: document.getElementById('auth-overlay'),
@@ -75,7 +80,17 @@ document.addEventListener('DOMContentLoaded', () => {
         notifList: document.getElementById('notif-list'),
         markAllReadBtn: document.getElementById('mark-all-read-btn'),
         notifFilterBtns: document.querySelectorAll('.notif-filter-btn'),
-        notifTypeTabs: document.querySelectorAll('.notif-type-tab')
+        notifTypeTabs: document.querySelectorAll('.notif-type-tab'),
+        helpTab: document.querySelector('[data-tab="help"]'),
+        helpSearchInput: document.getElementById('help-search-input'),
+        faqCategoryPills: document.querySelectorAll('.faq-category-pills .pill'),
+        faqItems: document.querySelectorAll('.faq-item'),
+        faqAccordion: document.getElementById('faq-accordion'),
+        supportForm: document.getElementById('support-form'),
+        supportCategory: document.getElementById('support-category'),
+        supportTitle: document.getElementById('support-title'),
+        supportDescription: document.getElementById('support-description'),
+        feedbackList: document.getElementById('feedback-list')
     };
 
     // --- Authentication ---
@@ -196,9 +211,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (tab === 'dashboard') fetchOrders();
             if (tab === 'my-orders') fetchMyOrders();
-            if (tab === 'profile') loadProfile();
+            if (tab === 'profile') {
+                loadProfile();
+                loadUserFeedbacks();
+            }
             if (tab === 'leaderboard') fetchLeaderboard();
             if (tab === 'lostfound') fetchLostFound();
+            if (tab === 'help') loadHelpCenter();
             if (tab === 'notifications') {
                 fetchNotifications();
                 fetchUnreadCount();
@@ -1068,6 +1087,251 @@ document.addEventListener('DOMContentLoaded', () => {
             fetchNotifications();
         };
     });
+
+    // --- Help Center Logic ---
+
+    elements.faqItems.forEach(item => {
+        const question = item.querySelector('.faq-question');
+        if (question) {
+            question.onclick = () => {
+                const isActive = item.classList.contains('active');
+                elements.faqItems.forEach(i => i.classList.remove('active'));
+                if (!isActive) {
+                    item.classList.add('active');
+                }
+            };
+        }
+    });
+
+    elements.faqCategoryPills.forEach(pill => {
+        pill.onclick = () => {
+            elements.faqCategoryPills.forEach(p => p.classList.remove('active'));
+            pill.classList.add('active');
+            faqState.category = pill.dataset.faqCategory;
+            filterAndRenderFAQ();
+        };
+    });
+
+    if (elements.helpSearchInput) {
+        elements.helpSearchInput.oninput = () => {
+            clearTimeout(helpSearchTimer);
+            helpSearchTimer = setTimeout(() => {
+                faqState.keyword = elements.helpSearchInput.value.trim();
+                filterAndRenderFAQ();
+            }, 300);
+        };
+    }
+
+    function filterAndRenderFAQ() {
+        elements.faqItems.forEach(item => {
+            const itemCategory = item.dataset.category;
+            const categoryMatch = faqState.category === '全部' || itemCategory === faqState.category;
+
+            let keywordMatch = true;
+            if (faqState.keyword) {
+                const questionEl = item.querySelector('.faq-question span');
+                const answerEl = item.querySelector('.faq-answer');
+                const text = (questionEl ? questionEl.textContent : '') + (answerEl ? answerEl.textContent : '');
+                keywordMatch = text.toLowerCase().includes(faqState.keyword.toLowerCase());
+            }
+
+            if (categoryMatch && keywordMatch) {
+                item.classList.remove('hidden');
+                if (faqState.keyword) {
+                    const questionEl = item.querySelector('.faq-question span');
+                    const answerEl = item.querySelector('.faq-answer');
+                    if (questionEl) highlightText(questionEl, faqState.keyword);
+                    if (answerEl) highlightText(answerEl, faqState.keyword);
+                } else {
+                    const questionEl = item.querySelector('.faq-question span');
+                    const answerEl = item.querySelector('.faq-answer');
+                    if (questionEl) removeHighlight(questionEl);
+                    if (answerEl) removeHighlight(answerEl);
+                }
+            } else {
+                item.classList.add('hidden');
+                item.classList.remove('active');
+            }
+        });
+    }
+
+    function highlightText(element, keyword) {
+        if (!keyword) return;
+        const pattern = new RegExp(`(${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+
+        function processNode(node) {
+            if (node.nodeType === Node.TEXT_NODE) {
+                const text = node.textContent;
+                if (pattern.test(text)) {
+                    const fragment = document.createDocumentFragment();
+                    let lastIndex = 0;
+                    let match;
+                    pattern.lastIndex = 0;
+                    while ((match = pattern.exec(text)) !== null) {
+                        if (match.index > lastIndex) {
+                            fragment.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+                        }
+                        const mark = document.createElement('mark');
+                        mark.textContent = match[0];
+                        fragment.appendChild(mark);
+                        lastIndex = pattern.lastIndex;
+                    }
+                    if (lastIndex < text.length) {
+                        fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
+                    }
+                    node.parentNode.replaceChild(fragment, node);
+                }
+            } else if (node.nodeType === Node.ELEMENT_NODE && node.tagName !== 'MARK' && node.tagName !== 'I') {
+                const children = Array.from(node.childNodes);
+                children.forEach(processNode);
+            }
+        }
+
+        removeHighlight(element);
+        processNode(element);
+    }
+
+    function removeHighlight(element) {
+        const marks = element.querySelectorAll('mark');
+        marks.forEach(mark => {
+            const parent = mark.parentNode;
+            while (mark.firstChild) {
+                parent.insertBefore(mark.firstChild, mark);
+            }
+            parent.removeChild(mark);
+            parent.normalize();
+        });
+    }
+
+    if (elements.supportForm) {
+        elements.supportForm.onsubmit = async (e) => {
+            e.preventDefault();
+            const payload = {
+                username: currentUser.username,
+                category: elements.supportCategory.value,
+                title: elements.supportTitle.value.trim(),
+                description: elements.supportDescription.value.trim()
+            };
+
+            if (!payload.category || !payload.title || !payload.description) {
+                showToast('请填写所有必填字段');
+                return;
+            }
+
+            try {
+                const resp = await fetch('/api/feedback', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await resp.json();
+                if (resp.ok && data.status === 'success') {
+                    showToast('反馈提交成功，我们会尽快处理！');
+                    elements.supportForm.reset();
+                } else {
+                    showToast(data.message || '提交失败，请重试');
+                }
+            } catch (err) {
+                showToast('提交失败，请检查网络连接');
+            }
+        };
+    }
+
+    async function loadUserFeedbacks() {
+        if (!currentUser || !elements.feedbackList) return;
+
+        try {
+            const resp = await fetch(`/api/feedback?username=${encodeURIComponent(currentUser.username)}`);
+            const feedbacks = await resp.json();
+            renderUserFeedbacks(feedbacks);
+        } catch (err) {
+            console.error('Failed to load user feedbacks:', err);
+        }
+    }
+
+    function renderUserFeedbacks(feedbacks) {
+        if (!elements.feedbackList) return;
+
+        elements.feedbackList.innerHTML = '';
+
+        if (!feedbacks || feedbacks.length === 0) {
+            elements.feedbackList.innerHTML = `
+                <div style="text-align:center; padding: 30px; color: #64748b;">
+                    <i class="fas fa-inbox" style="font-size: 2rem; margin-bottom: 10px; opacity: 0.5;"></i>
+                    <p>暂无反馈记录</p>
+                </div>
+            `;
+            return;
+        }
+
+        feedbacks.forEach(fb => {
+            const statusMap = {
+                'pending': { text: '处理中', class: 'feedback-status-pending' },
+                'resolved': { text: '已回复', class: 'feedback-status-resolved' },
+                'closed': { text: '已解决', class: 'feedback-status-resolved' }
+            };
+            const categoryClassMap = {
+                '账号注册': 'feedback-cat-account',
+                '任务发布': 'feedback-cat-task',
+                '接单配送': 'feedback-cat-delivery',
+                '报酬结算': 'feedback-cat-payment',
+                '账户安全': 'feedback-cat-security',
+                '意见建议': 'feedback-cat-suggestion',
+                '其他': 'feedback-cat-other'
+            };
+            const status = statusMap[fb.status] || statusMap['pending'];
+            const categoryClass = categoryClassMap[fb.category] || 'feedback-cat-other';
+            const isResolved = fb.status === 'resolved' || fb.status === 'closed';
+
+            let replyHtml = '';
+            if (isResolved) {
+                const replyContent = fb.reply || '感谢你的反馈！我们已经收到并处理了你的问题，如有其他疑问欢迎继续反馈~';
+                replyHtml = `
+                    <div class="feedback-reply">
+                        <div class="feedback-reply-label">客服回复：</div>
+                        <div class="feedback-reply-content">${escapeHtml(replyContent)}</div>
+                    </div>
+                `;
+            }
+
+            const card = document.createElement('div');
+            card.className = 'feedback-item';
+            card.innerHTML = `
+                <div class="feedback-item-header">
+                    <span class="feedback-category ${categoryClass}">${escapeHtml(fb.category)}</span>
+                    <span class="feedback-status ${status.class}">${status.text}</span>
+                    <span class="feedback-date">${formatDate(fb.createdAt)}</span>
+                </div>
+                <div class="feedback-item-title">${escapeHtml(fb.title)}</div>
+                <div class="feedback-item-desc">${escapeHtml(fb.description)}</div>
+                ${replyHtml}
+            `;
+            elements.feedbackList.appendChild(card);
+        });
+    }
+
+    function loadHelpCenter() {
+        faqState.category = '全部';
+        faqState.keyword = '';
+
+        elements.faqCategoryPills.forEach(p => {
+            p.classList.remove('active');
+            if (p.dataset.faqCategory === '全部') p.classList.add('active');
+        });
+
+        if (elements.helpSearchInput) {
+            elements.helpSearchInput.value = '';
+        }
+
+        elements.faqItems.forEach(item => {
+            item.classList.remove('active');
+            item.classList.remove('hidden');
+            const questionEl = item.querySelector('.faq-question span');
+            const answerEl = item.querySelector('.faq-answer');
+            if (questionEl) removeHighlight(questionEl);
+            if (answerEl) removeHighlight(answerEl);
+        });
+    }
 
     // Init
     updateUIForLogin();

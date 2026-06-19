@@ -76,6 +76,7 @@
                 <a href="#" class="nav-item" data-tab="leaderboard"><i class="fas fa-trophy"></i> 跑腿排行榜</a>
                 <a href="#" class="nav-item" data-tab="my-orders"><i class="fas fa-clipboard-list"></i> 我的订单</a>
                 <a href="#" class="nav-item" data-tab="post-task"><i class="fas fa-plus-circle"></i> 发布悬赏</a>
+                <a href="#" class="nav-item" data-tab="help"><i class="fas fa-question-circle"></i> 帮助中心</a>
                 <a href="#" class="nav-item" data-tab="profile"><i class="fas fa-user-circle"></i> 个人中心</a>
             </nav>
             <div class="sidebar-footer">
@@ -253,6 +254,190 @@
                         <button class="p-action-btn" id="account-sec-btn"><i class="fas fa-shield-alt"></i>
                             账户安全</button>
                     </div>
+                    <div class="feedback-records">
+                        <div class="section-header" style="margin-bottom: 16px;">
+                            <h3 style="font-size: 1.15rem; color: #0f172a;"><i class="fas fa-comment-dots" style="color: var(--primary); margin-right: 8px;"></i>我的反馈记录</h3>
+                        </div>
+                        <div class="feedback-list" id="feedback-list">
+                            <div class="feedback-item">
+                                <div class="feedback-item-header">
+                                    <span class="feedback-category feedback-cat-account">账号注册</span>
+                                    <span class="feedback-status feedback-status-pending">处理中</span>
+                                    <span class="feedback-date">2026-06-15 14:30</span>
+                                </div>
+                                <div class="feedback-item-title">无法登录账号，提示密码错误</div>
+                                <div class="feedback-item-desc">昨天修改密码后今天就无法登录了，确认密码输入正确但一直提示错误，希望能尽快处理，谢谢。</div>
+                            </div>
+                            <div class="feedback-item">
+                                <div class="feedback-item-header">
+                                    <span class="feedback-category feedback-cat-suggestion">意见建议</span>
+                                    <span class="feedback-status feedback-status-resolved">已回复</span>
+                                    <span class="feedback-date">2026-06-10 09:15</span>
+                                </div>
+                                <div class="feedback-item-title">建议增加任务备注功能</div>
+                                <div class="feedback-item-desc">希望发布任务时能增加备注字段，方便说明包裹的特殊情况，比如是否需要冷藏、是否易碎等。</div>
+                                <div class="feedback-reply">
+                                    <div class="feedback-reply-label">客服回复：</div>
+                                    <div class="feedback-reply-content">感谢你的宝贵建议！我们已将该需求纳入开发计划，预计下个版本会上线任务备注功能，敬请期待~</div>
+                                </div>
+                            </div>
+                            <div class="feedback-item">
+                                <div class="feedback-item-header">
+                                    <span class="feedback-category feedback-cat-delivery">接单配送</span>
+                                    <span class="feedback-status feedback-status-resolved">已解决</span>
+                                    <span class="feedback-date">2026-06-05 16:42</span>
+                                </div>
+                                <div class="feedback-item-title">接单后联系不到发件人</div>
+                                <div class="feedback-item-desc">接单后发件人留的联系方式无法接通，导致无法正常配送。</div>
+                                <div class="feedback-reply">
+                                    <div class="feedback-reply-label">客服回复：</div>
+                                    <div class="feedback-reply-content">已核实情况，该任务已取消，不影响你的信用分。后续如遇类似情况可点击订单详情页的"联系客服"快速处理。</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Help Center -->
+            <section class="view-section hidden" id="help-tab">
+                <div class="help-header">
+                    <h1><i class="fas fa-question-circle" style="color: var(--primary);"></i> 帮助中心</h1>
+                    <p>常见问题解答与客服支持，助你快速解决问题</p>
+                </div>
+                <div class="search-box help-search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="help-search-input" placeholder="搜索问题关键词，如：如何接单、怎么提现...">
+                </div>
+                <div class="category-pills faq-category-pills">
+                    <button class="pill active" data-faq-category="全部">全部</button>
+                    <button class="pill" data-faq-category="账号注册">账号注册</button>
+                    <button class="pill" data-faq-category="任务发布">任务发布</button>
+                    <button class="pill" data-faq-category="接单配送">接单配送</button>
+                    <button class="pill" data-faq-category="报酬结算">报酬结算</button>
+                    <button class="pill" data-faq-category="账户安全">账户安全</button>
+                </div>
+                <div class="faq-accordion" id="faq-accordion">
+                    <div class="faq-item" data-category="账号注册">
+                        <div class="faq-question">
+                            <span><i class="fas fa-user-plus" style="color: var(--primary); margin-right: 10px;"></i>如何注册新账号？</span>
+                            <i class="fas fa-chevron-down faq-toggle"></i>
+                        </div>
+                        <div class="faq-answer">
+                            <p>点击页面右上角的"注册"按钮，填写用户名、密码、真实姓名和专业班级信息，提交后即可完成注册。用户名最多20个字符，密码长度没有限制（建议至少6位）。</p>
+                        </div>
+                    </div>
+                    <div class="faq-item" data-category="账号注册">
+                        <div class="faq-question">
+                            <span><i class="fas fa-key" style="color: var(--primary); margin-right: 10px;"></i>忘记密码怎么办？</span>
+                            <i class="fas fa-chevron-down faq-toggle"></i>
+                        </div>
+                        <div class="faq-answer">
+                            <p>目前平台暂不支持自助找回密码功能。如忘记密码，请通过下方的"联系客服"表单提交申请，管理员会在24小时内协助你重置密码。</p>
+                        </div>
+                    </div>
+                    <div class="faq-item" data-category="任务发布">
+                        <div class="faq-question">
+                            <span><i class="fas fa-plus-circle" style="color: var(--primary); margin-right: 10px;"></i>如何发布代取快递任务？</span>
+                            <i class="fas fa-chevron-down faq-toggle"></i>
+                        </div>
+                        <div class="faq-answer">
+                            <p>登录后点击左侧菜单栏的"发布悬赏"，填写包裹简称、取件驿站、送达宿舍和悬赏报酬，确认无误后点击"立即发布任务"即可。发布成功后任务会出现在任务大厅供其他同学接单。</p>
+                        </div>
+                    </div>
+                    <div class="faq-item" data-category="任务发布">
+                        <div class="faq-question">
+                            <span><i class="fas fa-trash" style="color: var(--primary); margin-right: 10px;"></i>可以取消已发布的任务吗？</span>
+                            <i class="fas fa-chevron-down faq-toggle"></i>
+                        </div>
+                        <div class="faq-answer">
+                            <p>在任务尚未被他人接单前，你可以在"我的订单-我发布的"中取消任务。如果任务已被接单，请与接单同学协商后通过客服渠道处理。</p>
+                        </div>
+                    </div>
+                    <div class="faq-item" data-category="接单配送">
+                        <div class="faq-question">
+                            <span><i class="fas fa-shipping-fast" style="color: var(--primary); margin-right: 10px;"></i>如何接单配送？</span>
+                            <i class="fas fa-chevron-down faq-toggle"></i>
+                        </div>
+                        <div class="faq-answer">
+                            <p>在任务大厅浏览可用任务，点击感兴趣的任务卡片，查看详情后点击"立即接单"按钮即可。接单后请按照取件地址前往驿站取件，完成后在订单详情中确认送达。</p>
+                        </div>
+                    </div>
+                    <div class="faq-item" data-category="接单配送">
+                        <div class="faq-question">
+                            <span><i class="fas fa-exclamation-triangle" style="color: var(--primary); margin-right: 10px;"></i>接单后发现无法送达怎么办？</span>
+                            <i class="fas fa-chevron-down faq-toggle"></i>
+                        </div>
+                        <div class="faq-answer">
+                            <p>如遇特殊情况无法完成配送，请尽快在订单详情中点击"取消接单"，并说明原因。频繁无理由取消接单会影响你的信用分。</p>
+                        </div>
+                    </div>
+                    <div class="faq-item" data-category="报酬结算">
+                        <div class="faq-question">
+                            <span><i class="fas fa-money-bill-wave" style="color: var(--primary); margin-right: 10px;"></i>报酬如何结算？</span>
+                            <i class="fas fa-chevron-down faq-toggle"></i>
+                        </div>
+                        <div class="faq-answer">
+                            <p>当发件人确认收到包裹后，悬赏报酬会自动计入你的账户余额。你可以在个人中心查看账户余额，达到提现门槛后可申请提现。</p>
+                        </div>
+                    </div>
+                    <div class="faq-item" data-category="报酬结算">
+                        <div class="faq-question">
+                            <span><i class="fas fa-hand-holding-usd" style="color: var(--primary); margin-right: 10px;"></i>如何提现余额？</span>
+                            <i class="fas fa-chevron-down faq-toggle"></i>
+                        </div>
+                        <div class="faq-answer">
+                            <p>目前平台支持支付宝和微信提现。在个人中心点击"余额提现"，选择提现方式并填写相关信息，提现申请会在1-3个工作日内处理完成。</p>
+                        </div>
+                    </div>
+                    <div class="faq-item" data-category="账户安全">
+                        <div class="faq-question">
+                            <span><i class="fas fa-lock" style="color: var(--primary); margin-right: 10px;"></i>如何修改密码？</span>
+                            <i class="fas fa-chevron-down faq-toggle"></i>
+                        </div>
+                        <div class="faq-answer">
+                            <p>登录后进入"个人中心"，点击"账户安全"按钮，输入新密码后保存即可。建议定期更换密码以保障账户安全。</p>
+                        </div>
+                    </div>
+                    <div class="faq-item" data-category="账户安全">
+                        <div class="faq-question">
+                            <span><i class="fas fa-shield-alt" style="color: var(--primary); margin-right: 10px;"></i>信用分有什么作用？</span>
+                            <i class="fas fa-chevron-down faq-toggle"></i>
+                        </div>
+                        <div class="faq-answer">
+                            <p>信用分是衡量用户可靠程度的重要指标。新用户初始信用分为98分，成功完成订单会增加信用分，违约或被举报会扣除信用分。信用分过低会限制接单和发布任务的权限。</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="contact-support">
+                    <div class="contact-support-header">
+                        <h3><i class="fas fa-headset" style="color: var(--primary);"></i> 联系客服</h3>
+                        <p style="color: #64748b; font-size: 0.9rem; margin-top: 5px;">没有找到你需要的答案？请填写下方表单，我们会尽快回复</p>
+                    </div>
+                    <form id="support-form" class="support-form">
+                        <div class="form-group">
+                            <label>问题分类</label>
+                            <select id="support-category" required>
+                                <option value="">请选择问题分类</option>
+                                <option value="账号注册">账号注册相关</option>
+                                <option value="任务发布">任务发布相关</option>
+                                <option value="接单配送">接单配送相关</option>
+                                <option value="报酬结算">报酬结算相关</option>
+                                <option value="账户安全">账户安全相关</option>
+                                <option value="意见建议">意见建议</option>
+                                <option value="其他">其他问题</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>问题标题 <span style="color: #94a3b8; font-size: 0.85rem;">(最多50字)</span></label>
+                            <input type="text" id="support-title" placeholder="简要描述你的问题，如：无法登录账号" maxlength="50" required>
+                        </div>
+                        <div class="form-group">
+                            <label>详细描述 <span style="color: #94a3b8; font-size: 0.85rem;">(最多500字)</span></label>
+                            <textarea id="support-description" rows="5" placeholder="详细描述你遇到的问题、操作步骤、错误提示等信息，方便我们更快定位问题" maxlength="500" required></textarea>
+                        </div>
+                        <button type="submit" class="submit-btn support-submit-btn"><i class="fas fa-paper-plane"></i> 提交反馈</button>
+                    </form>
                 </div>
             </section>
 

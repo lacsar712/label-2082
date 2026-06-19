@@ -16,6 +16,9 @@ int lostfound_next_id = 1;
 Notification notifications[MAX_NOTIFICATIONS];
 int notification_count = 0;
 int notification_next_id = 1;
+Feedback feedbacks[MAX_FEEDBACK];
+int feedback_count = 0;
+int feedback_next_id = 1;
 
 const char* get_user_real_name(const char *username) {
   for (int i = 0; i < user_count; i++) {
@@ -48,6 +51,62 @@ void create_notification(const char *username, const char *type, const char *tit
 
   save_data();
   log_message(LOG_INFO, "Notification created for user %s: %s", username, n->title);
+}
+
+static void escape_feedback_json(char *dst, const char *src, int max_len) {
+  int j = 0;
+  for (int i = 0; src[i] && j < max_len - 1; i++) {
+    if (src[i] == '"') {
+      dst[j++] = '\\';
+      dst[j++] = '"';
+    } else if (src[i] == '\\') {
+      dst[j++] = '\\';
+      dst[j++] = '\\';
+    } else if (src[i] == '\n') {
+      dst[j++] = '\\';
+      dst[j++] = 'n';
+    } else if (src[i] == '\r') {
+      dst[j++] = '\\';
+      dst[j++] = 'r';
+    } else if (src[i] == '\t') {
+      dst[j++] = '\\';
+      dst[j++] = 't';
+    } else {
+      dst[j++] = src[i];
+    }
+  }
+  dst[j] = '\0';
+}
+
+void get_feedbacks_json(char *json, const char *username) {
+  strcat(json, "[");
+  int first = 1;
+
+  for (int i = feedback_count - 1; i >= 0; i--) {
+    if (username && strlen(username) > 0 &&
+        strcmp(feedbacks[i].username, username) != 0)
+      continue;
+
+    if (!first)
+      strcat(json, ",");
+
+    char esc_title[200], esc_desc[2000], esc_category[100];
+    escape_feedback_json(esc_title, feedbacks[i].title, sizeof(esc_title));
+    escape_feedback_json(esc_desc, feedbacks[i].description, sizeof(esc_desc));
+    escape_feedback_json(esc_category, feedbacks[i].category, sizeof(esc_category));
+
+    char item[4096];
+    sprintf(item,
+            "{\"id\":%d,\"username\":\"%s\",\"category\":\"%s\","
+            "\"title\":\"%s\",\"description\":\"%s\",\"status\":\"%s\","
+            "\"createdAt\":\"%s\"}",
+            feedbacks[i].id, feedbacks[i].username, esc_category,
+            esc_title, esc_desc, feedbacks[i].status,
+            feedbacks[i].created_at);
+    strcat(json, item);
+    first = 0;
+  }
+  strcat(json, "]");
 }
 
 void save_data() {
@@ -92,6 +151,17 @@ void save_data() {
     log_message(LOG_INFO, "Notifications data saved successfully");
   } else {
     log_message(LOG_ERROR, "Failed to save notifications data");
+  }
+
+  FILE *f5 = fopen("data_feedbacks.bin", "wb");
+  if (f5) {
+    fwrite(&feedback_count, sizeof(int), 1, f5);
+    fwrite(&feedback_next_id, sizeof(int), 1, f5);
+    fwrite(feedbacks, sizeof(Feedback), feedback_count, f5);
+    fclose(f5);
+    log_message(LOG_INFO, "Feedbacks data saved successfully");
+  } else {
+    log_message(LOG_ERROR, "Failed to save feedbacks data");
   }
 }
 
@@ -321,6 +391,17 @@ void load_data() {
     log_message(LOG_INFO, "Loaded %d notifications", notification_count);
   } else {
     log_message(LOG_WARN, "No existing notifications data found");
+  }
+
+  FILE *f5 = fopen("data_feedbacks.bin", "rb");
+  if (f5) {
+    fread(&feedback_count, sizeof(int), 1, f5);
+    fread(&feedback_next_id, sizeof(int), 1, f5);
+    fread(feedbacks, sizeof(Feedback), feedback_count, f5);
+    fclose(f5);
+    log_message(LOG_INFO, "Loaded %d feedbacks", feedback_count);
+  } else {
+    log_message(LOG_WARN, "No existing feedbacks data found");
   }
 
   if (user_count == 0) {

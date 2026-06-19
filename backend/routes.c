@@ -692,6 +692,76 @@ static void handle_mark_all_read(int client_socket, char *body) {
   send(client_socket, resp, strlen(resp), 0);
 }
 
+static void handle_create_feedback(int client_socket, char *body) {
+  Feedback new_fb;
+  memset(&new_fb, 0, sizeof(Feedback));
+  new_fb.id = feedback_next_id++;
+
+  parse_json_string(body, "username", new_fb.username, sizeof(new_fb.username));
+  parse_json_string(body, "category", new_fb.category, sizeof(new_fb.category));
+  parse_json_string(body, "title", new_fb.title, sizeof(new_fb.title));
+  parse_json_string(body, "description", new_fb.description, sizeof(new_fb.description));
+
+  if (strlen(new_fb.username) == 0 || strlen(new_fb.title) == 0) {
+    log_message(LOG_WARN, "Create feedback failed: missing fields");
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少必填字段\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  strcpy(new_fb.status, "pending");
+
+  time_t t = time(NULL);
+  struct tm *tm_info = localtime(&t);
+  strftime(new_fb.created_at, sizeof(new_fb.created_at), "%Y-%m-%d %H:%M:%S", tm_info);
+
+  if (feedback_count < MAX_FEEDBACK) {
+    feedbacks[feedback_count++] = new_fb;
+    save_data();
+    log_message(LOG_INFO, "Feedback created: ID=%d by %s", new_fb.id, new_fb.username);
+    char resp[] = "HTTP/1.1 200 OK\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"success\"}";
+    send(client_socket, resp, strlen(resp), 0);
+  } else {
+    log_message(LOG_ERROR, "Failed to create feedback: max reached");
+    char resp[] = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\"}";
+    send(client_socket, resp, strlen(resp), 0);
+  }
+}
+
+static void handle_get_feedback(int client_socket, char *query_string) {
+  char username[50] = "";
+
+  if (query_string) {
+    char *u_ptr = strstr(query_string, "username=");
+    if (u_ptr) {
+      char decoded[50] = {0};
+      sscanf(u_ptr + 9, "%[^& ]", decoded);
+      strncpy(username, decoded, sizeof(username) - 1);
+    }
+  }
+
+  char response_header[] =
+      "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+      "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(MAX_FEEDBACK * 2048);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for feedbacks JSON");
+    return;
+  }
+  memset(json, 0, MAX_FEEDBACK * 2048);
+  get_feedbacks_json(json, strlen(username) > 0 ? username : NULL);
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "Feedbacks fetched - user:%s",
+              username[0] ? username : "all");
+}
+
 void handle_request(int client_socket) {
   char buffer[BUFFER_SIZE];
   memset(buffer, 0, BUFFER_SIZE);
@@ -813,6 +883,16 @@ void handle_request(int client_socket) {
       body += 4;
       handle_mark_all_read(client_socket, body);
     }
+  } else if (strstr(buffer, "POST /api/feedback")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_create_feedback(client_socket, body);
+    }
+  } else if (strstr(buffer, "GET /api/feedback")) {
+    char *path_start = strstr(buffer, "GET /api/feedback");
+    char *q = strstr(path_start, "?");
+    handle_get_feedback(client_socket, q);
   } else {
     log_message(LOG_WARN, "404 Not Found: %.50s", buffer);
     char response[] = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";

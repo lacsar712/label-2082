@@ -8,8 +8,12 @@ extern int user_count;
 extern Order orders[MAX_ORDERS];
 extern int order_count;
 extern int next_id;
+extern LostFound lostfound_list[MAX_LOSTFOUND];
+extern int lostfound_count;
+extern int lostfound_next_id;
 
 void save_data();
 void load_data();
+const char* get_user_real_name(const char *username);
 
 #endif

@@ -10,6 +10,18 @@ int user_count = 0;
 Order orders[MAX_ORDERS];
 int order_count = 0;
 int next_id = 1;
+LostFound lostfound_list[MAX_LOSTFOUND];
+int lostfound_count = 0;
+int lostfound_next_id = 1;
+
+const char* get_user_real_name(const char *username) {
+  for (int i = 0; i < user_count; i++) {
+    if (strcmp(users[i].username, username) == 0) {
+      return users[i].real_name;
+    }
+  }
+  return username;
+}
 
 void save_data() {
   FILE *f1 = fopen("data_orders.bin", "wb");
@@ -31,6 +43,17 @@ void save_data() {
     log_message(LOG_INFO, "Users data saved successfully");
   } else {
     log_message(LOG_ERROR, "Failed to save users data");
+  }
+
+  FILE *f3 = fopen("data_lostfound.bin", "wb");
+  if (f3) {
+    fwrite(&lostfound_count, sizeof(int), 1, f3);
+    fwrite(&lostfound_next_id, sizeof(int), 1, f3);
+    fwrite(lostfound_list, sizeof(LostFound), lostfound_count, f3);
+    fclose(f3);
+    log_message(LOG_INFO, "LostFound data saved successfully");
+  } else {
+    log_message(LOG_ERROR, "Failed to save lostfound data");
   }
 }
 
@@ -56,6 +79,79 @@ static void backfill_order_data() {
     save_data();
     log_message(LOG_INFO, "Backfilled order timestamps and ratings");
   }
+}
+
+static void seed_lostfound_demo_data() {
+  if (lostfound_count > 0) return;
+
+  const char *types[] = {"lost", "found"};
+  const char *titles[] = {
+      "图书馆三楼遗失黑色双肩包", "食堂拾到校园卡一张",
+      "教学楼B区丢失蓝色雨伞", "快递柜发现未取走的快递盒",
+      "操场丢失白色AirPods", "南门保安室收到一串钥匙",
+      "宿舍楼下捡到粉色水杯", "丢失机械手表一块",
+      "菜鸟驿站拾到眼镜一副", "计算机楼丢失笔记本电脑"
+  };
+  const char *descs[] = {
+      "黑色Nike双肩包，内有《算法导论》和一本笔记本，对本人非常重要，有拾到者必有重谢！",
+      "校园卡尾号3721，姓名张同学，请失主联系认领。",
+      "天堂牌蓝色长柄雨伞，伞柄有小猫咪贴纸。",
+      "中通快递，收件人李同学，可能被误拿。",
+      "白色AirPods Pro，充电盒有刻字，请好心人联系！",
+      "共5把钥匙，含一个汽车遥控器钥匙，已放保安室。",
+      "膳魔师粉色保温杯，杯身有贴纸装饰。",
+      "天梭机械手表，银色表带，有纪念意义。",
+      "黑色方框近视眼镜，500度左右，镜框品牌雷朋。",
+      "MacBook Pro 14寸，银色，外壳有小磕碰，内含大量学习资料。"
+  };
+  const char *locs[] = {
+      "图书馆三楼自习区", "第一食堂二楼",
+      "教学楼B203教室", "菜鸟驿站南门柜",
+      "西区操场看台", "南门保安室",
+      "13号楼宿舍楼下", "篮球场边长椅",
+      "菜鸟驿站-南门", "计算机楼A501"
+  };
+  const char *contacts[] = {
+      "电话138****1234", "微信zhangsan001",
+      "QQ123456789", "电话159****8888",
+      "微信lihua_2021", "前往保安室认领",
+      "电话136****5555", "QQ987654321",
+      "微信eye_glass_2023", "电话188****6666"
+  };
+  const char *cats[] = {
+      "包具", "证件卡片", "雨伞雨具", "快递包裹",
+      "数码产品", "钥匙", "水杯", "手表饰品", "眼镜", "电子产品"
+  };
+  const char *creators[] = {
+      "lixiaoming", "wanghong", "zhangwei", "liumei", "chenjie",
+      "zhaoyun", "sunli", "admin", "lixiaoming", "wanghong"
+  };
+
+  srand(time(NULL));
+  for (int i = 0; i < 10 && lostfound_count < MAX_LOSTFOUND; i++) {
+    LostFound *lf = &lostfound_list[lostfound_count];
+    lf->id = lostfound_next_id++;
+    strcpy(lf->type, types[i % 2]);
+    strncpy(lf->title, titles[i], sizeof(lf->title) - 1);
+    strncpy(lf->description, descs[i], sizeof(lf->description) - 1);
+    strncpy(lf->location, locs[i], sizeof(lf->location) - 1);
+    strncpy(lf->contact, contacts[i], sizeof(lf->contact) - 1);
+    strncpy(lf->category, cats[i], sizeof(lf->category) - 1);
+    strncpy(lf->creator, creators[i], sizeof(lf->creator) - 1);
+    strncpy(lf->creator_name, get_user_real_name(creators[i]), sizeof(lf->creator_name) - 1);
+    strcpy(lf->status, "active");
+
+    int days_ago = rand() % 30;
+    int hours_ago = rand() % 24;
+    time_t t = time(NULL) - days_ago * 86400 - hours_ago * 3600;
+    struct tm *tm_info = localtime(&t);
+    strftime(lf->created_at, sizeof(lf->created_at), "%Y-%m-%d %H:%M:%S", tm_info);
+    strcpy(lf->updated_at, lf->created_at);
+
+    lostfound_count++;
+  }
+  log_message(LOG_INFO, "Seeded %d demo lostfound items", 10);
+  save_data();
 }
 
 static void seed_demo_data() {
@@ -167,6 +263,17 @@ void load_data() {
     log_message(LOG_WARN, "No existing users data found");
   }
 
+  FILE *f3 = fopen("data_lostfound.bin", "rb");
+  if (f3) {
+    fread(&lostfound_count, sizeof(int), 1, f3);
+    fread(&lostfound_next_id, sizeof(int), 1, f3);
+    fread(lostfound_list, sizeof(LostFound), lostfound_count, f3);
+    fclose(f3);
+    log_message(LOG_INFO, "Loaded %d lostfound items", lostfound_count);
+  } else {
+    log_message(LOG_WARN, "No existing lostfound data found");
+  }
+
   if (user_count == 0) {
     strcpy(users[user_count].username, "admin");
     strcpy(users[user_count].password, "123456");
@@ -178,5 +285,6 @@ void load_data() {
   }
 
   seed_demo_data();
+  seed_lostfound_demo_data();
   backfill_order_data();
 }

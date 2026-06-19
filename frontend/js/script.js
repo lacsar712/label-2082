@@ -5,6 +5,14 @@ document.addEventListener('DOMContentLoaded', () => {
     let myOrdersView = 'created'; // 'created' or 'accepted'
     let leaderboardPeriod = 'total'; // 'week', 'month', 'total'
     let expandedRunner = null;
+    let lfState = {
+        type: '全部',
+        category: '全部',
+        keyword: '',
+        sort: 'desc',
+        view: 'all' // 'all' or 'mine'
+    };
+    let lfSearchTimer = null;
 
     const elements = {
         authOverlay: document.getElementById('auth-overlay'),
@@ -40,7 +48,24 @@ document.addEventListener('DOMContentLoaded', () => {
         editPassword: document.getElementById('edit-password'),
         podiumSection: document.getElementById('podium-section'),
         leaderboardList: document.getElementById('leaderboard-list'),
-        periodToggles: document.querySelectorAll('#leaderboard-tab .toggle-btn')
+        periodToggles: document.querySelectorAll('#leaderboard-tab .toggle-btn'),
+        lfMasonry: document.getElementById('lf-masonry'),
+        lfPostBtn: document.getElementById('lf-post-btn'),
+        lfFilterBtns: document.querySelectorAll('.lf-filter-btn'),
+        lfSearchInput: document.getElementById('lf-search-input'),
+        lfCategorySelect: document.getElementById('lf-category-select'),
+        lfSortSelect: document.getElementById('lf-sort-select'),
+        lfViewAll: document.getElementById('lf-view-all'),
+        lfViewMine: document.getElementById('lf-view-mine'),
+        lfModal: document.getElementById('lf-modal'),
+        lfForm: document.getElementById('lf-form'),
+        lfModalTitle: document.getElementById('lf-modal-title'),
+        lfEditId: document.getElementById('lf-edit-id'),
+        lfTitle: document.getElementById('lf-title'),
+        lfDescription: document.getElementById('lf-description'),
+        lfLocation: document.getElementById('lf-location'),
+        lfContact: document.getElementById('lf-contact'),
+        lfCategory: document.getElementById('lf-category')
     };
 
     // --- Authentication ---
@@ -160,6 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (tab === 'my-orders') fetchMyOrders();
             if (tab === 'profile') loadProfile();
             if (tab === 'leaderboard') fetchLeaderboard();
+            if (tab === 'lostfound') fetchLostFound();
         };
     });
 
@@ -579,6 +605,267 @@ document.addEventListener('DOMContentLoaded', () => {
         t.classList.remove('hidden');
         setTimeout(() => t.classList.add('hidden'), 3000);
     }
+
+    // --- Lost & Found Logic ---
+    async function fetchLostFound() {
+        try {
+            const params = new URLSearchParams();
+            if (lfState.type !== '全部') params.append('type', lfState.type);
+            if (lfState.category !== '全部') params.append('category', lfState.category);
+            if (lfState.keyword) params.append('keyword', lfState.keyword);
+            params.append('sort', lfState.sort);
+            if (lfState.view === 'mine') params.append('creator', currentUser.username);
+
+            const resp = await fetch(`/api/lostfound?${params.toString()}`);
+            const items = await resp.json();
+            renderLostFound(items);
+        } catch (err) {
+            console.error('Failed to fetch lostfound:', err);
+            showToast('加载失物招领数据失败');
+        }
+    }
+
+    function renderLostFound(items) {
+        if (!items || items.length === 0) {
+            elements.lfMasonry.innerHTML = `
+                <div class="lf-empty-state">
+                    <i class="fas fa-inbox"></i>
+                    <h3>暂无布告</h3>
+                    <p>${lfState.view === 'mine' ? '你还没有发布过布告，快去发布第一条吧！' : '还没有任何布告信息，点击右上角发布吧！'}</p>
+                </div>
+            `;
+            return;
+        }
+
+        elements.lfMasonry.innerHTML = '';
+        items.forEach((item, idx) => {
+            const card = document.createElement('div');
+            card.className = `lf-card ${item.type}`;
+            card.style.animationDelay = `${idx * 0.05}s`;
+
+            const isOwner = item.creator === currentUser.username;
+            const typeIcon = item.type === 'lost' ? 'fa-search' : 'fa-hand-holding-heart';
+            const typeText = item.type === 'lost' ? '丢失启事' : '拾取招领';
+
+            card.innerHTML = `
+                <span class="lf-card-type-badge">
+                    <i class="fas ${typeIcon}"></i> ${typeText}
+                </span>
+                <span class="lf-card-cat-tag">${item.category}</span>
+                <h3 class="lf-card-title">${escapeHtml(item.title)}</h3>
+                <p class="lf-card-desc">${escapeHtml(item.description)}</p>
+                <div class="lf-card-meta">
+                    <div class="lf-card-meta-row">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <span><strong>${escapeHtml(item.location)}</strong></span>
+                    </div>
+                    <div class="lf-card-meta-row">
+                        <i class="fas fa-address-book"></i>
+                        <span><strong>${escapeHtml(item.contact)}</strong></span>
+                    </div>
+                </div>
+                <div class="lf-card-footer">
+                    <div class="lf-card-creator">
+                        <img class="lf-card-avatar" src="https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(item.creator)}" alt="${escapeHtml(item.creatorName)}">
+                        <div class="lf-card-user-info">
+                            <span class="lf-card-user-name">${escapeHtml(item.creatorName)}</span>
+                            <span class="lf-card-date">${formatDate(item.createdAt)}</span>
+                        </div>
+                    </div>
+                    ${isOwner ? `
+                    <div class="lf-card-actions">
+                        <button class="lf-action-btn edit" title="编辑" onclick="editLostFound(${item.id})">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="lf-action-btn offline" title="下架" onclick="offlineLostFound(${item.id})">
+                            <i class="fas fa-eye-slash"></i>
+                        </button>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+            elements.lfMasonry.appendChild(card);
+        });
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function formatDate(dateStr) {
+        if (!dateStr) return '';
+        const date = new Date(dateStr.replace(' ', 'T'));
+        if (isNaN(date.getTime())) return dateStr;
+        const now = new Date();
+        const diff = now - date;
+        const min = Math.floor(diff / 60000);
+        const hour = Math.floor(diff / 3600000);
+        const day = Math.floor(diff / 86400000);
+        if (min < 1) return '刚刚';
+        if (min < 60) return `${min}分钟前`;
+        if (hour < 24) return `${hour}小时前`;
+        if (day < 30) return `${day}天前`;
+        return dateStr.slice(5, 16);
+    }
+
+    function openLfModal(isEdit = false, data = null) {
+        elements.lfForm.reset();
+        elements.lfEditId.value = '';
+
+        if (isEdit && data) {
+            elements.lfModalTitle.innerHTML = '<i class="fas fa-edit"></i> 编辑布告';
+            elements.lfEditId.value = data.id;
+            elements.lfTitle.value = data.title;
+            elements.lfDescription.value = data.description;
+            elements.lfLocation.value = data.location;
+            elements.lfContact.value = data.contact;
+            elements.lfCategory.value = data.category;
+            const radio = document.querySelector(`input[name="lf-type"][value="${data.type}"]`);
+            if (radio) radio.checked = true;
+        } else {
+            elements.lfModalTitle.innerHTML = '<i class="fas fa-bullhorn"></i> 发布布告';
+            const firstRadio = document.querySelector('input[name="lf-type"]');
+            if (firstRadio) firstRadio.checked = false;
+        }
+
+        elements.lfModal.classList.remove('hidden');
+    }
+
+    elements.lfPostBtn.onclick = () => openLfModal(false);
+
+    window.editLostFound = async (id) => {
+        try {
+            const resp = await fetch(`/api/lostfound?creator=${encodeURIComponent(currentUser.username)}`);
+            const items = await resp.json();
+            const item = items.find(x => x.id === id);
+            if (item) {
+                openLfModal(true, item);
+            } else {
+                showToast('未找到该布告');
+            }
+        } catch (err) {
+            showToast('加载布告详情失败');
+        }
+    };
+
+    window.offlineLostFound = async (id) => {
+        if (!confirm('确定要下架这条布告吗？下架后将不再显示。')) return;
+        try {
+            const resp = await fetch('/api/lostfound_offline', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, creator: currentUser.username })
+            });
+            const data = await resp.json();
+            if (resp.ok && data.status === 'success') {
+                showToast('布告已下架');
+                fetchLostFound();
+            } else {
+                showToast(data.message || '下架失败');
+            }
+        } catch (err) {
+            showToast('下架失败');
+        }
+    };
+
+    elements.lfForm.onsubmit = async (e) => {
+        e.preventDefault();
+        const editId = elements.lfEditId.value;
+        const typeRadio = document.querySelector('input[name="lf-type"]:checked');
+        if (!typeRadio) {
+            showToast('请选择布告类型');
+            return;
+        }
+
+        const payload = {
+            type: typeRadio.value,
+            title: elements.lfTitle.value.trim(),
+            description: elements.lfDescription.value.trim(),
+            location: elements.lfLocation.value.trim(),
+            contact: elements.lfContact.value.trim(),
+            category: elements.lfCategory.value,
+            creator: currentUser.username
+        };
+
+        if (!payload.title || !payload.description || !payload.location || !payload.contact || !payload.category) {
+            showToast('请填写所有必填字段');
+            return;
+        }
+
+        try {
+            let resp;
+            if (editId) {
+                payload.id = parseInt(editId);
+                resp = await fetch('/api/lostfound_update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } else {
+                resp = await fetch('/api/lostfound', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            }
+
+            const data = await resp.json();
+            if (resp.ok && data.status === 'success') {
+                showToast(editId ? '布告已更新！' : '布告发布成功！');
+                elements.lfModal.classList.add('hidden');
+                fetchLostFound();
+            } else {
+                showToast(data.message || (editId ? '更新失败' : '发布失败'));
+            }
+        } catch (err) {
+            showToast(editId ? '更新失败' : '发布失败');
+        }
+    };
+
+    // LF Filters
+    elements.lfFilterBtns.forEach(btn => {
+        btn.onclick = () => {
+            elements.lfFilterBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            lfState.type = btn.dataset.lfType;
+            fetchLostFound();
+        };
+    });
+
+    elements.lfSearchInput.oninput = () => {
+        clearTimeout(lfSearchTimer);
+        lfSearchTimer = setTimeout(() => {
+            lfState.keyword = elements.lfSearchInput.value.trim();
+            fetchLostFound();
+        }, 350);
+    };
+
+    elements.lfCategorySelect.onchange = () => {
+        lfState.category = elements.lfCategorySelect.value;
+        fetchLostFound();
+    };
+
+    elements.lfSortSelect.onchange = () => {
+        lfState.sort = elements.lfSortSelect.value;
+        fetchLostFound();
+    };
+
+    elements.lfViewAll.onclick = () => {
+        elements.lfViewAll.classList.add('active');
+        elements.lfViewMine.classList.remove('active');
+        lfState.view = 'all';
+        fetchLostFound();
+    };
+
+    elements.lfViewMine.onclick = () => {
+        elements.lfViewMine.classList.add('active');
+        elements.lfViewAll.classList.remove('active');
+        lfState.view = 'mine';
+        fetchLostFound();
+    };
 
     // Init
     updateUIForLogin();

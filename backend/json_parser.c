@@ -50,6 +50,19 @@ void parse_json_string(const char *body, const char *key, char *output, int max_
   }
 }
 
+int parse_json_int(const char *body, const char *key) {
+  char search[100];
+  snprintf(search, sizeof(search), "\"%s\"", key);
+  char *p = strstr(body, search);
+  if (p) {
+    p += strlen(search);
+    while (*p == ' ' || *p == ':')
+      p++;
+    return atoi(p);
+  }
+  return -1;
+}
+
 static int parse_date(const char *date_str, struct tm *tm_out) {
   if (strlen(date_str) == 0)
     return 0;
@@ -336,4 +349,128 @@ void get_runner_detail_json(char *buf, const char *username) {
     first = 0;
   }
   strcat(buf, "]}");
+}
+
+static void escape_json_string(char *dst, const char *src, int max_len) {
+  int j = 0;
+  for (int i = 0; src[i] && j < max_len - 1; i++) {
+    if (src[i] == '"') {
+      dst[j++] = '\\';
+      dst[j++] = '"';
+    } else if (src[i] == '\\') {
+      dst[j++] = '\\';
+      dst[j++] = '\\';
+    } else if (src[i] == '\n') {
+      dst[j++] = '\\';
+      dst[j++] = 'n';
+    } else if (src[i] == '\r') {
+      dst[j++] = '\\';
+      dst[j++] = 'r';
+    } else if (src[i] == '\t') {
+      dst[j++] = '\\';
+      dst[j++] = 't';
+    } else {
+      dst[j++] = src[i];
+    }
+  }
+  dst[j] = '\0';
+}
+
+typedef struct {
+  int index;
+  char created_at[32];
+} LFSortItem;
+
+static int compare_lf_desc(const void *a, const void *b) {
+  const LFSortItem *ia = (const LFSortItem *)a;
+  const LFSortItem *ib = (const LFSortItem *)b;
+  return strcmp(ib->created_at, ia->created_at);
+}
+
+static int compare_lf_asc(const void *a, const void *b) {
+  const LFSortItem *ia = (const LFSortItem *)a;
+  const LFSortItem *ib = (const LFSortItem *)b;
+  return strcmp(ia->created_at, ib->created_at);
+}
+
+void get_lostfound_json(char *buf, const char *type_filter, const char *category_filter,
+                        const char *keyword, const char *sort_order, const char *creator_filter) {
+  char dec_type[20] = {0}, dec_cat[100] = {0}, dec_kw[200] = {0}, dec_creator[50] = {0};
+
+  if (type_filter && strlen(type_filter) > 0)
+    url_decode(dec_type, type_filter);
+  if (category_filter && strlen(category_filter) > 0)
+    url_decode(dec_cat, category_filter);
+  if (keyword && strlen(keyword) > 0)
+    url_decode(dec_kw, keyword);
+  if (creator_filter && strlen(creator_filter) > 0)
+    url_decode(dec_creator, creator_filter);
+
+  int matched[MAX_LOSTFOUND];
+  int match_count = 0;
+
+  for (int i = 0; i < lostfound_count; i++) {
+    if (strcmp(lostfound_list[i].status, "offline") == 0)
+      continue;
+
+    if (strlen(dec_type) > 0 && strcmp(dec_type, "全部") != 0 &&
+        strcmp(lostfound_list[i].type, dec_type) != 0)
+      continue;
+
+    if (strlen(dec_cat) > 0 && strcmp(dec_cat, "全部") != 0 &&
+        strcmp(lostfound_list[i].category, dec_cat) != 0)
+      continue;
+
+    if (strlen(dec_creator) > 0 &&
+        strcmp(lostfound_list[i].creator, dec_creator) != 0)
+      continue;
+
+    if (strlen(dec_kw) > 0) {
+      if (strstr(lostfound_list[i].title, dec_kw) == NULL &&
+          strstr(lostfound_list[i].description, dec_kw) == NULL &&
+          strstr(lostfound_list[i].location, dec_kw) == NULL &&
+          strstr(lostfound_list[i].category, dec_kw) == NULL)
+        continue;
+    }
+
+    matched[match_count++] = i;
+  }
+
+  LFSortItem sort_items[MAX_LOSTFOUND];
+  for (int i = 0; i < match_count; i++) {
+    sort_items[i].index = matched[i];
+    strcpy(sort_items[i].created_at, lostfound_list[matched[i]].created_at);
+  }
+
+  if (sort_order && strcmp(sort_order, "asc") == 0)
+    qsort(sort_items, match_count, sizeof(LFSortItem), compare_lf_asc);
+  else
+    qsort(sort_items, match_count, sizeof(LFSortItem), compare_lf_desc);
+
+  strcat(buf, "[");
+  for (int i = 0; i < match_count; i++) {
+    if (i > 0)
+      strcat(buf, ",");
+    int idx = sort_items[i].index;
+    LostFound *lf = &lostfound_list[idx];
+
+    char esc_title[200], esc_desc[1000], esc_loc[200], esc_contact[100], esc_cat[100];
+    escape_json_string(esc_title, lf->title, sizeof(esc_title));
+    escape_json_string(esc_desc, lf->description, sizeof(esc_desc));
+    escape_json_string(esc_loc, lf->location, sizeof(esc_loc));
+    escape_json_string(esc_contact, lf->contact, sizeof(esc_contact));
+    escape_json_string(esc_cat, lf->category, sizeof(esc_cat));
+
+    char item[2048];
+    sprintf(item,
+            "{\"id\":%d,\"type\":\"%s\",\"title\":\"%s\",\"description\":\"%s\","
+            "\"location\":\"%s\",\"contact\":\"%s\",\"category\":\"%s\","
+            "\"creator\":\"%s\",\"creatorName\":\"%s\",\"status\":\"%s\","
+            "\"createdAt\":\"%s\",\"updatedAt\":\"%s\"}",
+            lf->id, lf->type, esc_title, esc_desc, esc_loc, esc_contact,
+            esc_cat, lf->creator, lf->creator_name, lf->status,
+            lf->created_at, lf->updated_at);
+    strcat(buf, item);
+  }
+  strcat(buf, "]");
 }

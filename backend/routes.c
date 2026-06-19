@@ -334,6 +334,191 @@ static void handle_get_runner_detail(int client_socket, char *query_string) {
   log_message(LOG_INFO, "Runner detail fetched - username: %s", username);
 }
 
+static void handle_get_lostfound(int client_socket, char *query_string) {
+  char type_filter[50] = "", category_filter[100] = "";
+  char keyword[200] = "", sort_order[20] = "", creator_filter[50] = "";
+
+  if (query_string) {
+    char *q;
+    q = strstr(query_string, "type=");
+    if (q) sscanf(q + 5, "%[^& ]", type_filter);
+    q = strstr(query_string, "category=");
+    if (q) sscanf(q + 9, "%[^& ]", category_filter);
+    q = strstr(query_string, "keyword=");
+    if (q) sscanf(q + 8, "%[^& ]", keyword);
+    q = strstr(query_string, "sort=");
+    if (q) sscanf(q + 5, "%[^& ]", sort_order);
+    q = strstr(query_string, "creator=");
+    if (q) sscanf(q + 8, "%[^& ]", creator_filter);
+  }
+
+  char response_header[] =
+      "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+      "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(MAX_LOSTFOUND * 2048);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for lostfound JSON");
+    return;
+  }
+  memset(json, 0, MAX_LOSTFOUND * 2048);
+  get_lostfound_json(json, type_filter, category_filter, keyword, sort_order, creator_filter);
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "LostFound fetched - type:%s cat:%s kw:%s sort:%s creator:%s",
+              type_filter[0] ? type_filter : "all",
+              category_filter[0] ? category_filter : "all",
+              keyword[0] ? keyword : "none",
+              sort_order[0] ? sort_order : "desc",
+              creator_filter[0] ? creator_filter : "all");
+}
+
+static void handle_create_lostfound(int client_socket, char *body) {
+  LostFound new_lf;
+  memset(&new_lf, 0, sizeof(LostFound));
+  new_lf.id = lostfound_next_id++;
+
+  parse_json_string(body, "type", new_lf.type, sizeof(new_lf.type));
+  parse_json_string(body, "title", new_lf.title, sizeof(new_lf.title));
+  parse_json_string(body, "description", new_lf.description, sizeof(new_lf.description));
+  parse_json_string(body, "location", new_lf.location, sizeof(new_lf.location));
+  parse_json_string(body, "contact", new_lf.contact, sizeof(new_lf.contact));
+  parse_json_string(body, "category", new_lf.category, sizeof(new_lf.category));
+  parse_json_string(body, "creator", new_lf.creator, sizeof(new_lf.creator));
+
+  if (strlen(new_lf.title) == 0 || strlen(new_lf.type) == 0 ||
+      strlen(new_lf.creator) == 0) {
+    log_message(LOG_WARN, "Create lostfound failed: missing fields");
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少必填字段\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  strncpy(new_lf.creator_name, get_user_real_name(new_lf.creator), sizeof(new_lf.creator_name) - 1);
+  strcpy(new_lf.status, "active");
+
+  time_t t = time(NULL);
+  struct tm *tm_info = localtime(&t);
+  strftime(new_lf.created_at, sizeof(new_lf.created_at), "%Y-%m-%d %H:%M:%S", tm_info);
+  strcpy(new_lf.updated_at, new_lf.created_at);
+
+  if (lostfound_count < MAX_LOSTFOUND) {
+    lostfound_list[lostfound_count++] = new_lf;
+    save_data();
+    log_message(LOG_INFO, "LostFound created: ID=%d by %s", new_lf.id, new_lf.creator);
+    char resp[] = "HTTP/1.1 200 OK\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"success\"}";
+    send(client_socket, resp, strlen(resp), 0);
+  } else {
+    log_message(LOG_ERROR, "Failed to create lostfound: max reached");
+    char resp[] = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\"}";
+    send(client_socket, resp, strlen(resp), 0);
+  }
+}
+
+static void handle_update_lostfound(int client_socket, char *body) {
+  int id = parse_json_int(body, "id");
+  char username[50] = "";
+  parse_json_string(body, "creator", username, sizeof(username));
+
+  if (id == -1) {
+    char response[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                      "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少id\"}";
+    send(client_socket, response, strlen(response), 0);
+    return;
+  }
+
+  for (int i = 0; i < lostfound_count; i++) {
+    if (lostfound_list[i].id == id) {
+      if (strcmp(lostfound_list[i].creator, username) != 0) {
+        char response[] = "HTTP/1.1 403 Forbidden\r\nContent-Type: "
+                          "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"无权限编辑\"}";
+        send(client_socket, response, strlen(response), 0);
+        log_message(LOG_WARN, "Update lostfound forbidden: user %s not creator of %d", username, id);
+        return;
+      }
+
+      char tmp_buf[1024];
+      parse_json_string(body, "type", tmp_buf, sizeof(tmp_buf));
+      if (strlen(tmp_buf) > 0) strncpy(lostfound_list[i].type, tmp_buf, sizeof(lostfound_list[i].type) - 1);
+
+      parse_json_string(body, "title", tmp_buf, sizeof(tmp_buf));
+      if (strlen(tmp_buf) > 0) strncpy(lostfound_list[i].title, tmp_buf, sizeof(lostfound_list[i].title) - 1);
+
+      parse_json_string(body, "description", tmp_buf, sizeof(tmp_buf));
+      if (strlen(tmp_buf) > 0) strncpy(lostfound_list[i].description, tmp_buf, sizeof(lostfound_list[i].description) - 1);
+
+      parse_json_string(body, "location", tmp_buf, sizeof(tmp_buf));
+      if (strlen(tmp_buf) > 0) strncpy(lostfound_list[i].location, tmp_buf, sizeof(lostfound_list[i].location) - 1);
+
+      parse_json_string(body, "contact", tmp_buf, sizeof(tmp_buf));
+      if (strlen(tmp_buf) > 0) strncpy(lostfound_list[i].contact, tmp_buf, sizeof(lostfound_list[i].contact) - 1);
+
+      parse_json_string(body, "category", tmp_buf, sizeof(tmp_buf));
+      if (strlen(tmp_buf) > 0) strncpy(lostfound_list[i].category, tmp_buf, sizeof(lostfound_list[i].category) - 1);
+
+      time_t t = time(NULL);
+      struct tm *tm_info = localtime(&t);
+      strftime(lostfound_list[i].updated_at, sizeof(lostfound_list[i].updated_at),
+               "%Y-%m-%d %H:%M:%S", tm_info);
+
+      save_data();
+      log_message(LOG_INFO, "LostFound updated: ID=%d", id);
+      char response[] = "HTTP/1.1 200 OK\r\nContent-Type: "
+                        "application/json\r\n\r\n{\"status\":\"success\"}";
+      send(client_socket, response, strlen(response), 0);
+      return;
+    }
+  }
+
+  log_message(LOG_WARN, "LostFound not found for update: ID=%d", id);
+  char response[] = "HTTP/1.1 404 Not Found\r\nContent-Type: "
+                    "application/json\r\n\r\n{\"status\":\"error\"}";
+  send(client_socket, response, strlen(response), 0);
+}
+
+static void handle_offline_lostfound(int client_socket, char *body) {
+  int id = parse_json_int(body, "id");
+  char username[50] = "";
+  parse_json_string(body, "creator", username, sizeof(username));
+
+  if (id == -1) {
+    char response[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                      "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少id\"}";
+    send(client_socket, response, strlen(response), 0);
+    return;
+  }
+
+  for (int i = 0; i < lostfound_count; i++) {
+    if (lostfound_list[i].id == id) {
+      if (strcmp(lostfound_list[i].creator, username) != 0) {
+        char response[] = "HTTP/1.1 403 Forbidden\r\nContent-Type: "
+                          "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"无权限操作\"}";
+        send(client_socket, response, strlen(response), 0);
+        log_message(LOG_WARN, "Offline lostfound forbidden: user %s not creator of %d", username, id);
+        return;
+      }
+
+      strcpy(lostfound_list[i].status, "offline");
+      save_data();
+      log_message(LOG_INFO, "LostFound offline: ID=%d", id);
+      char response[] = "HTTP/1.1 200 OK\r\nContent-Type: "
+                        "application/json\r\n\r\n{\"status\":\"success\"}";
+      send(client_socket, response, strlen(response), 0);
+      return;
+    }
+  }
+
+  log_message(LOG_WARN, "LostFound not found for offline: ID=%d", id);
+  char response[] = "HTTP/1.1 404 Not Found\r\nContent-Type: "
+                    "application/json\r\n\r\n{\"status\":\"error\"}";
+  send(client_socket, response, strlen(response), 0);
+}
+
 void handle_request(int client_socket) {
   char buffer[BUFFER_SIZE];
   memset(buffer, 0, BUFFER_SIZE);
@@ -413,6 +598,28 @@ void handle_request(int client_socket) {
     char *path_start = strstr(buffer, "GET /api/runner_detail");
     char *q = strstr(path_start, "?");
     handle_get_runner_detail(client_socket, q);
+  } else if (strstr(buffer, "GET /api/lostfound")) {
+    char *path_start = strstr(buffer, "GET /api/lostfound");
+    char *q = strstr(path_start, "?");
+    handle_get_lostfound(client_socket, q);
+  } else if (strstr(buffer, "POST /api/lostfound")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_create_lostfound(client_socket, body);
+    }
+  } else if (strstr(buffer, "POST /api/lostfound_update")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_update_lostfound(client_socket, body);
+    }
+  } else if (strstr(buffer, "POST /api/lostfound_offline")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_offline_lostfound(client_socket, body);
+    }
   } else {
     log_message(LOG_WARN, "404 Not Found: %.50s", buffer);
     char response[] = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";

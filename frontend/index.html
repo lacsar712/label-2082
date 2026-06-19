@@ -68,6 +68,7 @@
             </div>
             <nav class="nav-menu">
                 <a href="#" class="nav-item active" data-tab="dashboard"><i class="fas fa-th-large"></i> 任务大厅</a>
+                <a href="#" class="nav-item" data-tab="lostfound"><i class="fas fa-bullhorn"></i> 失物招领</a>
                 <a href="#" class="nav-item" data-tab="leaderboard"><i class="fas fa-trophy"></i> 跑腿排行榜</a>
                 <a href="#" class="nav-item" data-tab="my-orders"><i class="fas fa-clipboard-list"></i> 我的订单</a>
                 <a href="#" class="nav-item" data-tab="post-task"><i class="fas fa-plus-circle"></i> 发布悬赏</a>
@@ -216,6 +217,65 @@
                     </div>
                 </div>
             </section>
+
+            <!-- Lost & Found -->
+            <section class="view-section hidden" id="lostfound-tab">
+                <div class="lf-header">
+                    <div class="lf-title-section">
+                        <h1><i class="fas fa-bullhorn" style="color: var(--secondary);"></i> 失物招领布告栏</h1>
+                        <p class="lf-subtitle">发布丢失或拾取信息，帮助同学找回物品</p>
+                    </div>
+                    <button class="lf-post-btn" id="lf-post-btn">
+                        <i class="fas fa-plus"></i> 发布布告
+                    </button>
+                </div>
+
+                <div class="lf-toolbar">
+                    <div class="lf-type-filter">
+                        <button class="lf-filter-btn active" data-lf-type="全部"><i class="fas fa-layer-group"></i> 全部</button>
+                        <button class="lf-filter-btn" data-lf-type="lost"><i class="fas fa-search"></i> 丢失</button>
+                        <button class="lf-filter-btn" data-lf-type="found"><i class="fas fa-hand-holding-heart"></i> 拾取</button>
+                    </div>
+
+                    <div class="lf-search-wrap">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="lf-search-input" placeholder="搜索标题、地点、描述...">
+                    </div>
+
+                    <div class="lf-category-select">
+                        <select id="lf-category-select">
+                            <option value="全部">全部分类</option>
+                            <option value="包具">包具</option>
+                            <option value="证件卡片">证件卡片</option>
+                            <option value="雨伞雨具">雨伞雨具</option>
+                            <option value="快递包裹">快递包裹</option>
+                            <option value="数码产品">数码产品</option>
+                            <option value="钥匙">钥匙</option>
+                            <option value="水杯">水杯</option>
+                            <option value="手表饰品">手表饰品</option>
+                            <option value="眼镜">眼镜</option>
+                            <option value="电子产品">电子产品</option>
+                            <option value="书籍文具">书籍文具</option>
+                            <option value="衣物">衣物</option>
+                            <option value="其他">其他</option>
+                        </select>
+                    </div>
+
+                    <div class="lf-sort-wrap">
+                        <select id="lf-sort-select">
+                            <option value="desc">最新发布</option>
+                            <option value="asc">最早发布</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="lf-my-toggle">
+                    <button class="lf-view-btn active" id="lf-view-all">全部布告</button>
+                    <button class="lf-view-btn" id="lf-view-mine">我发布的</button>
+                </div>
+
+                <div class="lf-masonry" id="lf-masonry"></div>
+            </section>
         </main>
     </div>
 
@@ -260,7 +320,85 @@
         </div>
     </div>
 
-    <script src="script.js?v=3"></script>
+    <!-- Lost & Found Modal -->
+    <div id="lf-modal" class="overlay hidden">
+        <div class="lf-modal-card">
+            <div class="lf-modal-header">
+                <h2 id="lf-modal-title"><i class="fas fa-bullhorn"></i> 发布布告</h2>
+                <button class="lf-modal-close" onclick="document.getElementById('lf-modal').classList.add('hidden')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="lf-form" class="lf-modal-body">
+                <input type="hidden" id="lf-edit-id">
+                <div class="lf-type-selector">
+                    <label class="lf-type-option lost">
+                        <input type="radio" name="lf-type" value="lost" required>
+                        <div class="lf-type-label">
+                            <i class="fas fa-search"></i>
+                            <span>我丢失了东西</span>
+                        </div>
+                    </label>
+                    <label class="lf-type-option found">
+                        <input type="radio" name="lf-type" value="found">
+                        <div class="lf-type-label">
+                            <i class="fas fa-hand-holding-heart"></i>
+                            <span>我拾到了东西</span>
+                        </div>
+                    </label>
+                </div>
+
+                <div class="form-group">
+                    <label>标题 <span style="color: #94a3b8; font-size: 0.85rem;">(最多50字)</span></label>
+                    <input type="text" id="lf-title" placeholder="简要描述物品，如：图书馆三楼遗失黑色双肩包" maxlength="50" required>
+                </div>
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>物品分类</label>
+                        <select id="lf-category" required>
+                            <option value="">请选择分类</option>
+                            <option value="包具">包具</option>
+                            <option value="证件卡片">证件卡片</option>
+                            <option value="雨伞雨具">雨伞雨具</option>
+                            <option value="快递包裹">快递包裹</option>
+                            <option value="数码产品">数码产品</option>
+                            <option value="钥匙">钥匙</option>
+                            <option value="水杯">水杯</option>
+                            <option value="手表饰品">手表饰品</option>
+                            <option value="眼镜">眼镜</option>
+                            <option value="电子产品">电子产品</option>
+                            <option value="书籍文具">书籍文具</option>
+                            <option value="衣物">衣物</option>
+                            <option value="其他">其他</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>发现/丢失地点 <span style="color: #94a3b8; font-size: 0.85rem;">(最多30字)</span></label>
+                        <input type="text" id="lf-location" placeholder="如：图书馆三楼自习区" maxlength="30" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>详细描述 <span style="color: #94a3b8; font-size: 0.85rem;">(最多200字)</span></label>
+                    <textarea id="lf-description" rows="4" placeholder="详细描述物品特征、颜色、品牌等信息，方便匹配" maxlength="200" required></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>联系方式 <span style="color: #94a3b8; font-size: 0.85rem;">(最多30字)</span></label>
+                    <input type="text" id="lf-contact" placeholder="电话/微信/QQ，方便他人联系你" maxlength="30" required>
+                </div>
+
+                <div style="display:flex; gap:12px; margin-top:10px;">
+                    <button type="button" class="btn-outline" style="flex:1;"
+                        onclick="document.getElementById('lf-modal').classList.add('hidden')">取消</button>
+                    <button type="submit" class="btn-primary" style="flex:1;"><i class="fas fa-paper-plane"></i> 提交布告</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js?v=4"></script>
 </body>
 
 </html>

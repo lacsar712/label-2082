@@ -1048,3 +1048,548 @@ select {
         font-size: 0.7rem;
     }
 }
+
+/* Lost & Found Styles */
+.lf-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 25px;
+    padding: 25px 30px;
+    background: linear-gradient(135deg, #fce7f3 0%, #fecdd3 50%, #fef3c7 100%);
+    border-radius: 24px;
+    box-shadow: var(--shadow);
+}
+
+.lf-title-section h1 {
+    font-size: 1.75rem;
+    font-weight: 800;
+    margin-bottom: 6px;
+    color: var(--text-main);
+}
+
+.lf-subtitle {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.lf-post-btn {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+    color: white;
+    border: none;
+    padding: 14px 28px;
+    border-radius: 14px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    cursor: pointer;
+    box-shadow: 0 8px 20px rgba(99, 102, 241, 0.3);
+    transition: all 0.3s ease;
+}
+
+.lf-post-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px rgba(99, 102, 241, 0.4);
+}
+
+.lf-toolbar {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+    padding: 18px 22px;
+    background: white;
+    border-radius: 18px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+}
+
+.lf-type-filter {
+    display: flex;
+    gap: 8px;
+    background: #f1f5f9;
+    padding: 5px;
+    border-radius: 12px;
+}
+
+.lf-filter-btn {
+    border: none;
+    background: transparent;
+    padding: 9px 16px;
+    border-radius: 9px;
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 0.88rem;
+    transition: all 0.25s ease;
+}
+
+.lf-filter-btn.active {
+    background: white;
+    color: var(--primary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.lf-filter-btn i {
+    margin-right: 5px;
+}
+
+.lf-search-wrap {
+    flex: 1;
+    min-width: 220px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    background: #f8fafc;
+    border-radius: 12px;
+    padding: 0 14px;
+    border: 1.5px solid transparent;
+    transition: border-color 0.25s;
+}
+
+.lf-search-wrap:focus-within {
+    border-color: var(--primary-light);
+    background: white;
+}
+
+.lf-search-wrap i {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-right: 8px;
+}
+
+.lf-search-wrap input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: 11px 0;
+    font-size: 0.9rem;
+    outline: none;
+    color: var(--text-main);
+}
+
+.lf-category-select,
+.lf-sort-wrap {
+    position: relative;
+}
+
+.lf-category-select select,
+.lf-sort-wrap select {
+    padding: 10px 32px 10px 14px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 12px;
+    background: white;
+    font-size: 0.88rem;
+    color: var(--text-main);
+    font-weight: 500;
+    cursor: pointer;
+    outline: none;
+    transition: border-color 0.25s;
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    background-size: 16px;
+}
+
+.lf-category-select select:focus,
+.lf-sort-wrap select:focus {
+    border-color: var(--primary-light);
+}
+
+.lf-my-toggle {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 22px;
+}
+
+.lf-view-btn {
+    border: 1.5px solid #e2e8f0;
+    background: white;
+    padding: 9px 20px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 0.88rem;
+    transition: all 0.25s ease;
+}
+
+.lf-view-btn.active {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+    color: white;
+    border-color: transparent;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+}
+
+.lf-masonry {
+    column-count: 3;
+    column-gap: 20px;
+}
+
+@media (max-width: 1200px) {
+    .lf-masonry {
+        column-count: 2;
+    }
+}
+
+@media (max-width: 700px) {
+    .lf-masonry {
+        column-count: 1;
+    }
+}
+
+.lf-card {
+    background: white;
+    border-radius: 18px;
+    padding: 22px;
+    margin-bottom: 20px;
+    break-inside: avoid;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    animation: fadeInUp 0.4s ease both;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(15px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.lf-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 6px;
+    height: 100%;
+}
+
+.lf-card.lost::before {
+    background: linear-gradient(180deg, #ef4444 0%, #f43f5e 100%);
+}
+
+.lf-card.found::before {
+    background: linear-gradient(180deg, #10b981 0%, #059669 100%);
+}
+
+.lf-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.09);
+}
+
+.lf-card-type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+
+.lf-card.lost .lf-card-type-badge {
+    background: #fef2f2;
+    color: #ef4444;
+}
+
+.lf-card.found .lf-card-type-badge {
+    background: #ecfdf5;
+    color: #10b981;
+}
+
+.lf-card-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 10px;
+    line-height: 1.4;
+}
+
+.lf-card-desc {
+    font-size: 0.88rem;
+    color: var(--text-muted);
+    line-height: 1.6;
+    margin-bottom: 14px;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.lf-card-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 14px 0;
+    border-top: 1px dashed #e2e8f0;
+    border-bottom: 1px dashed #e2e8f0;
+    margin-bottom: 14px;
+}
+
+.lf-card-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+
+.lf-card-meta-row i {
+    width: 16px;
+    text-align: center;
+    color: var(--primary-light);
+}
+
+.lf-card-meta-row strong {
+    color: var(--text-main);
+    font-weight: 600;
+}
+
+.lf-card-cat-tag {
+    display: inline-block;
+    padding: 3px 10px;
+    background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+    color: var(--primary);
+    border-radius: 8px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+
+.lf-card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.lf-card-creator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.lf-card-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: #e2e8f0;
+}
+
+.lf-card-user-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.lf-card-user-name {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.lf-card-date {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
+
+.lf-card-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.lf-action-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: none;
+    background: #f1f5f9;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    transition: all 0.25s ease;
+}
+
+.lf-action-btn.edit:hover {
+    background: #eef2ff;
+    color: var(--primary);
+}
+
+.lf-action-btn.offline:hover {
+    background: #fef2f2;
+    color: #ef4444;
+}
+
+.lf-empty-state {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 80px 20px;
+    color: var(--text-muted);
+}
+
+.lf-empty-state i {
+    font-size: 3.5rem;
+    opacity: 0.4;
+    margin-bottom: 18px;
+}
+
+.lf-empty-state h3 {
+    font-size: 1.2rem;
+    margin-bottom: 8px;
+    color: var(--text-main);
+}
+
+.lf-empty-state p {
+    font-size: 0.9rem;
+    opacity: 0.8;
+}
+
+/* Lost & Found Modal */
+.lf-modal-card {
+    background: white;
+    width: 560px;
+    max-width: 95vw;
+    max-height: 90vh;
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    animation: modalIn 0.35s ease;
+}
+
+@keyframes modalIn {
+    from {
+        opacity: 0;
+        transform: scale(0.92) translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.lf-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 22px 28px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.lf-modal-header h2 {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--text-main);
+}
+
+.lf-modal-close {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    border: none;
+    background: #f1f5f9;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.25s ease;
+}
+
+.lf-modal-close:hover {
+    background: #e2e8f0;
+    color: var(--text-main);
+}
+
+.lf-modal-body {
+    padding: 25px 28px;
+    overflow-y: auto;
+}
+
+.lf-type-selector {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 22px;
+}
+
+.lf-type-option {
+    cursor: pointer;
+    position: relative;
+}
+
+.lf-type-option input {
+    position: absolute;
+    opacity: 0;
+}
+
+.lf-type-label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 24px 16px;
+    border-radius: 16px;
+    border: 2.5px solid #e2e8f0;
+    font-weight: 700;
+    color: var(--text-muted);
+    transition: all 0.25s ease;
+    background: #fafbfc;
+}
+
+.lf-type-label i {
+    font-size: 1.75rem;
+}
+
+.lf-type-option.lost input:checked + .lf-type-label {
+    border-color: #ef4444;
+    background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+    color: #ef4444;
+    transform: scale(1.02);
+}
+
+.lf-type-option.found input:checked + .lf-type-label {
+    border-color: #10b981;
+    background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+    color: #10b981;
+    transform: scale(1.02);
+}
+
+@media (max-width: 768px) {
+    .lf-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 18px;
+    }
+
+    .lf-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .lf-type-filter {
+        justify-content: center;
+    }
+
+    .lf-category-select select,
+    .lf-sort-wrap select {
+        width: 100%;
+    }
+
+    .lf-modal-card {
+        max-height: 95vh;
+    }
+
+    .lf-type-selector {
+        grid-template-columns: 1fr;
+    }
+}

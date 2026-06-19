@@ -28,6 +28,9 @@ int template_next_id = 1;
 Report reports[MAX_REPORTS];
 int report_count = 0;
 int report_next_id = 1;
+Badge badges[MAX_BADGES];
+int badge_count = 0;
+int badge_next_id = 1;
 
 const char* get_user_real_name(const char *username) {
   for (int i = 0; i < user_count; i++) {
@@ -400,6 +403,17 @@ void save_data() {
     log_message(LOG_INFO, "Reports data saved successfully");
   } else {
     log_message(LOG_ERROR, "Failed to save reports data");
+  }
+
+  FILE *f9 = fopen("data_badges.bin", "wb");
+  if (f9) {
+    fwrite(&badge_count, sizeof(int), 1, f9);
+    fwrite(&badge_next_id, sizeof(int), 1, f9);
+    fwrite(badges, sizeof(Badge), badge_count, f9);
+    fclose(f9);
+    log_message(LOG_INFO, "Badges data saved successfully");
+  } else {
+    log_message(LOG_ERROR, "Failed to save badges data");
   }
 }
 
@@ -909,6 +923,17 @@ void load_data() {
     log_message(LOG_WARN, "No existing reports data found");
   }
 
+  FILE *f9 = fopen("data_badges.bin", "rb");
+  if (f9) {
+    fread(&badge_count, sizeof(int), 1, f9);
+    fread(&badge_next_id, sizeof(int), 1, f9);
+    fread(badges, sizeof(Badge), badge_count, f9);
+    fclose(f9);
+    log_message(LOG_INFO, "Loaded %d badges", badge_count);
+  } else {
+    log_message(LOG_WARN, "No existing badges data found");
+  }
+
   if (user_count == 0) {
     strcpy(users[user_count].username, "admin");
     strcpy(users[user_count].password, "123456");
@@ -1107,4 +1132,146 @@ Report* find_report_by_id(int id) {
     }
   }
   return NULL;
+}
+
+typedef struct {
+  const char *key;
+  const char *name;
+  const char *icon;
+  const char *color;
+  const char *condition_desc;
+} BadgeDef;
+
+static BadgeDef badge_definitions[] = {
+  {"first_order",    "首单告捷",   "fa-flag-checkered", "#10b981", "完成第1单代取任务"},
+  {"ten_orders",     "累计十单",   "fa-award",          "#6366f1", "累计完成10单代取任务"},
+  {"hundred_orders", "百单达人",   "fa-crown",          "#f59e0b", "累计完成100单代取任务"},
+  {"good_reviews",   "好评如潮",   "fa-star",           "#f43f5e", "累计获得5星评价≥5次"},
+  {"rain_or_shine",  "风雨无阻",   "fa-cloud-rain",     "#0ea5e9", "累计完成代取任务≥20单"},
+  {"night_owl",      "深夜侠影",   "fa-moon",           "#8b5cf6", "在22:00-06:00时段完成过订单"},
+};
+static int badge_def_count = sizeof(badge_definitions) / sizeof(badge_definitions[0]);
+
+static int has_badge(const char *username, const char *badge_key) {
+  for (int i = 0; i < badge_count; i++) {
+    if (strcmp(badges[i].username, username) == 0 &&
+        strcmp(badges[i].badge_key, badge_key) == 0) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+static int unlock_badge(const char *username, const char *badge_key) {
+  if (badge_count >= MAX_BADGES) return 0;
+  if (has_badge(username, badge_key)) return 0;
+
+  Badge *b = &badges[badge_count++];
+  b->id = badge_next_id++;
+  strncpy(b->username, username, sizeof(b->username) - 1);
+  strncpy(b->badge_key, badge_key, sizeof(b->badge_key) - 1);
+
+  time_t t = time(NULL);
+  struct tm *tm_info = localtime(&t);
+  strftime(b->unlocked_at, sizeof(b->unlocked_at), "%Y-%m-%d %H:%M:%S", tm_info);
+
+  save_data();
+  log_message(LOG_INFO, "Badge unlocked: user=%s badge=%s", username, badge_key);
+  return 1;
+}
+
+void check_and_unlock_badges(const char *username) {
+  if (!username || strlen(username) == 0) return;
+
+  int completed_count = 0;
+  int five_star_count = 0;
+  int night_order = 0;
+
+  for (int i = 0; i < order_count; i++) {
+    if (strcmp(orders[i].worker, username) != 0) continue;
+    if (strcmp(orders[i].status, "completed") != 0) continue;
+
+    completed_count++;
+    if (orders[i].rating == 5) five_star_count++;
+
+    struct tm tm_order;
+    memset(&tm_order, 0, sizeof(struct tm));
+    if (sscanf(orders[i].created_at, "%d-%d-%d %d:%d:%d",
+               &tm_order.tm_year, &tm_order.tm_mon, &tm_order.tm_mday,
+               &tm_order.tm_hour, &tm_order.tm_min, &tm_order.tm_sec) == 6) {
+      if (tm_order.tm_hour >= 22 || tm_order.tm_hour < 6) {
+        night_order = 1;
+      }
+    }
+  }
+
+  int newly_unlocked = 0;
+
+  if (completed_count >= 1) newly_unlocked += unlock_badge(username, "first_order");
+  if (completed_count >= 10) newly_unlocked += unlock_badge(username, "ten_orders");
+  if (completed_count >= 100) newly_unlocked += unlock_badge(username, "hundred_orders");
+  if (five_star_count >= 5) newly_unlocked += unlock_badge(username, "good_reviews");
+  if (completed_count >= 20) newly_unlocked += unlock_badge(username, "rain_or_shine");
+  if (night_order) newly_unlocked += unlock_badge(username, "night_owl");
+
+  if (newly_unlocked > 0) {
+    for (int i = 0; i < newly_unlocked && i < 3; i++) {
+      char summary[200];
+      snprintf(summary, sizeof(summary), "你解锁了新成就勋章，快去个人中心查看吧！");
+      create_notification(username, "system", "新勋章解锁", summary, "");
+    }
+  }
+}
+
+static void escape_badge_json(char *dst, const char *src, int max_len) {
+  int j = 0;
+  for (int i = 0; src[i] && j < max_len - 1; i++) {
+    if (src[i] == '"') {
+      dst[j++] = '\\';
+      dst[j++] = '"';
+    } else if (src[i] == '\\') {
+      dst[j++] = '\\';
+      dst[j++] = '\\';
+    } else {
+      dst[j++] = src[i];
+    }
+  }
+  dst[j] = '\0';
+}
+
+void get_badges_json(char *json, const char *username) {
+  strcat(json, "[");
+  int first = 1;
+
+  for (int d = 0; d < badge_def_count; d++) {
+    if (!first) strcat(json, ",");
+
+    int unlocked = 0;
+    char unlocked_at[32] = "";
+    for (int i = 0; i < badge_count; i++) {
+      if (strcmp(badges[i].username, username) == 0 &&
+          strcmp(badges[i].badge_key, badge_definitions[d].key) == 0) {
+        unlocked = 1;
+        strncpy(unlocked_at, badges[i].unlocked_at, sizeof(unlocked_at) - 1);
+        break;
+      }
+    }
+
+    char esc_name[100], esc_desc[200];
+    escape_badge_json(esc_name, badge_definitions[d].name, sizeof(esc_name));
+    escape_badge_json(esc_desc, badge_definitions[d].condition_desc, sizeof(esc_desc));
+
+    char item[1024];
+    sprintf(item,
+            "{\"key\":\"%s\",\"name\":\"%s\",\"icon\":\"%s\","
+            "\"color\":\"%s\",\"conditionDesc\":\"%s\","
+            "\"unlocked\":%s,\"unlockedAt\":\"%s\"}",
+            badge_definitions[d].key, esc_name, badge_definitions[d].icon,
+            badge_definitions[d].color, esc_desc,
+            unlocked ? "true" : "false", unlocked ? unlocked_at : "");
+    strcat(json, item);
+    first = 0;
+  }
+
+  strcat(json, "]");
 }

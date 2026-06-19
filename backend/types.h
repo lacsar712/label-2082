@@ -9,6 +9,8 @@
 #define MAX_WALLET_TXNS 2000
 #define MAX_TEMPLATES 100
 #define MAX_REPORTS 500
+#define MAX_BADGES 1000
+#define MAX_BADGE_TYPES 20
 #define BUFFER_SIZE 20480
 
 typedef struct {
@@ -107,5 +109,12 @@ typedef struct {
   char updated_at[32];
   char handled_at[32];
 } Report;
+
+typedef struct {
+  int id;
+  char username[50];
+  char badge_key[50];
+  char unlocked_at[32];
+} Badge;
 
 #endif

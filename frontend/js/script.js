@@ -35,6 +35,8 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     let selTplSearchTimer = null;
     let tplSearchTimer = null;
+    let previousBadgeKeys = new Set();
+    let allBadgesData = [];
 
     const elements = {
         authOverlay: document.getElementById('auth-overlay'),
@@ -491,6 +493,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (document.getElementById('dashboard-tab').classList.contains('hidden')) fetchMyOrders();
             else fetchOrders();
+
+            if (status === 'completed' || status === 'delivered') {
+                loadBadges();
+            }
         } catch (err) { showToast('操作失败'); }
     };
 
@@ -523,6 +529,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
             console.error('Failed to load profile stats:', err);
         }
+
+        loadBadges();
     }
 
     elements.editProfileBtn.onclick = () => {
@@ -579,6 +587,160 @@ document.addEventListener('DOMContentLoaded', () => {
                 setTimeout(() => elements.logoutBtn.click(), 1500);
             }
         } catch (err) { showToast('修改失败'); }
+    };
+
+    // --- Badge Wall ---
+    async function loadBadges() {
+        if (!currentUser) return;
+        try {
+            const resp = await fetch(`/api/badges?username=${currentUser.username}`);
+            const badges = await resp.json();
+            allBadgesData = badges;
+
+            const newlyUnlocked = [];
+            badges.forEach(b => {
+                if (b.unlocked && !previousBadgeKeys.has(b.key)) {
+                    newlyUnlocked.push(b);
+                }
+            });
+
+            renderBadgeWall(badges, newlyUnlocked);
+
+            previousBadgeKeys.clear();
+            badges.forEach(b => {
+                if (b.unlocked) previousBadgeKeys.add(b.key);
+            });
+
+            if (newlyUnlocked.length > 0) {
+                triggerBadgeCelebration(newlyUnlocked);
+            }
+        } catch (err) {
+            console.error('Failed to load badges:', err);
+        }
+    }
+
+    function renderBadgeWall(badges, newlyUnlocked) {
+        const grid = document.getElementById('badge-wall-grid');
+        if (!grid) return;
+
+        const unlockedCount = badges.filter(b => b.unlocked).length;
+        const countLabel = document.getElementById('badge-count-label');
+        if (countLabel) {
+            countLabel.textContent = `${unlockedCount}/${badges.length} 已解锁`;
+        }
+
+        grid.innerHTML = badges.map(b => {
+            const isNew = newlyUnlocked && newlyUnlocked.some(n => n.key === b.key);
+            return `
+                <div class="badge-item ${b.unlocked ? 'unlocked' : 'locked'} ${isNew ? 'just-unlocked' : ''}"
+                     data-badge-key="${b.key}" onclick="window._showBadgeDetail('${b.key}')">
+                    ${isNew ? '<span class="badge-new-tag">NEW</span>' : ''}
+                    <div class="badge-icon-wrap" style="${b.unlocked ? `background: ${b.color}; color: white;` : ''}">
+                        <i class="fas ${b.icon}"></i>
+                    </div>
+                    <span class="badge-name">${b.name}</span>
+                    ${b.unlocked
+                        ? `<span class="badge-unlock-date">${formatBadgeDate(b.unlockedAt)}</span>`
+                        : `<span class="badge-condition">${b.conditionDesc}</span>`
+                    }
+                </div>
+            `;
+        }).join('');
+    }
+
+    function formatBadgeDate(dateStr) {
+        if (!dateStr) return '';
+        const d = new Date(dateStr);
+        return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function triggerBadgeCelebration(newBadges) {
+        const overlay = document.createElement('div');
+        overlay.className = 'badge-celebration-overlay';
+        document.body.appendChild(overlay);
+
+        const colors = ['#f43f5e', '#6366f1', '#f59e0b', '#10b981', '#0ea5e9', '#8b5cf6'];
+        for (let i = 0; i < 50; i++) {
+            const confetti = document.createElement('div');
+            confetti.className = 'badge-confetti';
+            confetti.style.left = Math.random() * 100 + '%';
+            confetti.style.top = Math.random() * 30 + '%';
+            confetti.style.background = colors[Math.floor(Math.random() * colors.length)];
+            confetti.style.animationDelay = Math.random() * 0.5 + 's';
+            confetti.style.animationDuration = (1 + Math.random()) + 's';
+            confetti.style.width = (6 + Math.random() * 8) + 'px';
+            confetti.style.height = (6 + Math.random() * 8) + 'px';
+            overlay.appendChild(confetti);
+        }
+
+        const badgeNames = newBadges.map(b => b.name).join('、');
+        showToast(`🎉 解锁新勋章：${badgeNames}！`);
+
+        setTimeout(() => {
+            overlay.remove();
+        }, 2500);
+    }
+
+    window._showBadgeDetail = async function(badgeKey) {
+        const badge = allBadgesData.find(b => b.key === badgeKey);
+        if (!badge) return;
+
+        const modal = document.getElementById('badge-detail-modal');
+        const body = document.getElementById('badge-detail-body');
+
+        let relatedOrders = [];
+        try {
+            const resp = await fetch(`/api/orders?worker=${currentUser.username}`);
+            const orders = await resp.json();
+            relatedOrders = orders.filter(o => o.status === 'completed');
+        } catch (err) {
+            console.error('Failed to fetch related orders:', err);
+        }
+
+        let ordersHtml = '';
+        if (badge.unlocked && relatedOrders.length > 0) {
+            const displayOrders = relatedOrders.slice(0, 5);
+            ordersHtml = `
+                <div class="badge-detail-orders-title">关联订单（最近${displayOrders.length}单）</div>
+                ${displayOrders.map(o => `
+                    <div class="badge-detail-order-item">
+                        <span class="order-pkg">#${o.id} ${o.package}</span>
+                        <span class="order-date">${o.createdAt ? o.createdAt.substring(0, 10) : ''}</span>
+                    </div>
+                `).join('')}
+            `;
+        }
+
+        body.innerHTML = `
+            <div class="badge-detail-icon-wrap ${badge.unlocked ? '' : 'locked'}" style="${badge.unlocked ? `background: ${badge.color}; color: white;` : ''}">
+                <i class="fas ${badge.icon}"></i>
+            </div>
+            <div class="badge-detail-name">${badge.name}</div>
+            <span class="badge-detail-status ${badge.unlocked ? 'unlocked' : 'locked'}">
+                ${badge.unlocked ? '已解锁' : '未解锁'}
+            </span>
+            <div class="badge-detail-condition">${badge.conditionDesc}</div>
+            ${badge.unlocked ? `
+                <div class="badge-detail-unlock-info">
+                    <div class="badge-detail-unlock-row">
+                        <span class="label">解锁时间</span>
+                        <span class="value">${badge.unlockedAt || '-'}</span>
+                    </div>
+                    <div class="badge-detail-unlock-row">
+                        <span class="label">勋章类型</span>
+                        <span class="value">成就勋章</span>
+                    </div>
+                </div>
+                ${ordersHtml}
+            ` : `
+                <div class="badge-detail-unlock-info" style="text-align: center; color: #94a3b8; padding: 20px;">
+                    <i class="fas fa-lock" style="font-size: 1.5rem; margin-bottom: 8px; display: block;"></i>
+                    继续努力，完成条件即可自动解锁此勋章
+                </div>
+            `}
+        `;
+
+        modal.classList.remove('hidden');
     };
 
     // --- Leaderboard ---

@@ -444,6 +444,14 @@
                             <span class="p-lab">信用分</span>
                         </div>
                     </div>
+                    <div class="badge-wall-section">
+                        <div class="section-header" style="margin-bottom: 16px;">
+                            <h3 style="font-size: 1.15rem; color: #0f172a;"><i class="fas fa-medal" style="color: #f59e0b; margin-right: 8px;"></i>成就勋章</h3>
+                            <span class="badge-count-label" id="badge-count-label">0/6 已解锁</span>
+                        </div>
+                        <div class="badge-wall-grid" id="badge-wall-grid">
+                        </div>
+                    </div>
                     <div class="profile-wallet-card" onclick="document.querySelector('[data-tab=wallet]').click()">
                         <div class="pw-left">
                             <i class="fas fa-wallet"></i>
@@ -913,6 +921,19 @@
                     <button type="submit" class="btn-primary">确认修改</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Badge Detail Modal -->
+    <div id="badge-detail-modal" class="overlay hidden">
+        <div class="badge-detail-card">
+            <div class="badge-detail-header">
+                <button class="modal-close-btn" onclick="document.getElementById('badge-detail-modal').classList.add('hidden')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="badge-detail-body" id="badge-detail-body">
+            </div>
         </div>
     </div>
 

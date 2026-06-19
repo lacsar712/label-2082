@@ -26,6 +26,9 @@ extern int template_next_id;
 extern Report reports[MAX_REPORTS];
 extern int report_count;
 extern int report_next_id;
+extern Badge badges[MAX_BADGES];
+extern int badge_count;
+extern int badge_next_id;
 
 void save_data();
 void load_data();
@@ -53,5 +56,8 @@ int create_report(const char *reporter, const char *report_type, const char *des
                   const char *order_id, const char *target_user);
 int update_report_status(int id, const char *status, const char *handler_note);
 Report* find_report_by_id(int id);
+
+void check_and_unlock_badges(const char *username);
+void get_badges_json(char *json, const char *username);
 
 #endif

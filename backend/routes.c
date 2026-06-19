@@ -283,6 +283,8 @@ static void handle_update_status(int client_socket, char *body) {
               }
             }
           }
+
+          check_and_unlock_badges(orders[i].worker);
         } else if (strcmp(new_status, "cancelled") == 0) {
           if (strlen(orders[i].worker) > 0) {
             snprintf(summary, sizeof(summary), "订单（%s）已被发布者撤回",
@@ -1257,6 +1259,40 @@ static void handle_update_report(int client_socket, char *body) {
   }
 }
 
+static void handle_get_badges(int client_socket, char *query_string) {
+  char username[50] = "";
+  if (query_string) {
+    char *u_ptr = strstr(query_string, "username=");
+    if (u_ptr)
+      sscanf(u_ptr + 9, "%[^& ]", username);
+  }
+
+  if (strlen(username) == 0) {
+    char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                  "application/json\r\n\r\n{\"status\":\"error\"}";
+    send(client_socket, resp, strlen(resp), 0);
+    return;
+  }
+
+  check_and_unlock_badges(username);
+
+  char response_header[] = "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
+                           "charset=UTF-8\r\n\r\n";
+  send(client_socket, response_header, strlen(response_header), 0);
+
+  char *json = malloc(MAX_BADGE_TYPES * 512);
+  if (!json) {
+    log_message(LOG_ERROR, "Failed to allocate memory for badges JSON");
+    return;
+  }
+  memset(json, 0, MAX_BADGE_TYPES * 512);
+  get_badges_json(json, username);
+  send(client_socket, json, strlen(json), 0);
+  free(json);
+
+  log_message(LOG_INFO, "Badges fetched for user: %s", username);
+}
+
 void handle_request(int client_socket) {
   char buffer[BUFFER_SIZE];
   memset(buffer, 0, BUFFER_SIZE);
@@ -1446,6 +1482,10 @@ void handle_request(int client_socket) {
       body += 4;
       handle_update_report(client_socket, body);
     }
+  } else if (strstr(buffer, "GET /api/badges")) {
+    char *path_start = strstr(buffer, "GET /api/badges");
+    char *q = strstr(path_start, "?");
+    handle_get_badges(client_socket, q);
   } else {
     log_message(LOG_WARN, "404 Not Found: %.50s", buffer);
     char response[] = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";

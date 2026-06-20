@@ -70,6 +70,12 @@ static void handle_register(int client_socket, char *body) {
     save_data();
     log_message(LOG_INFO, "User registered: %s (%s)", u.username, u.real_name);
 
+    char summary[300];
+    snprintf(summary, sizeof(summary),
+             "恭喜你，账号「%s」实名认证已通过，真实姓名：%s，现在可以发布和接单啦！",
+             u.username, u.real_name);
+    create_notification(u.username, "auth", "实名认证已通过", summary, "");
+
     char resp[512];
     snprintf(resp, sizeof(resp),
              "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
@@ -317,14 +323,28 @@ static void handle_update_profile(int client_socket, char *body) {
 
   for (int i = 0; i < user_count; i++) {
     if (strcmp(users[i].username, username) == 0) {
-      if (strlen(real_name) > 0)
+      int info_changed = 0;
+      if (strlen(real_name) > 0 && strcmp(users[i].real_name, real_name) != 0) {
         strcpy(users[i].real_name, real_name);
-      if (strlen(major) > 0)
+        info_changed = 1;
+      }
+      if (strlen(major) > 0 && strcmp(users[i].major, major) != 0) {
         strcpy(users[i].major, major);
+        info_changed = 1;
+      }
       if (strlen(pwd) > 0)
         strcpy(users[i].password, pwd);
       save_data();
       log_message(LOG_INFO, "Profile updated for user: %s", username);
+
+      if (info_changed) {
+        char summary[300];
+        snprintf(summary, sizeof(summary),
+                 "您的身份信息已更新，真实姓名：%s，专业：%s，资料认证已同步完成",
+                 users[i].real_name, users[i].major);
+        create_notification(username, "auth", "资料认证已更新", summary, "");
+      }
+
       char response[] = "HTTP/1.1 200 OK\r\nContent-Type: "
                         "application/json\r\n\r\n{\"status\":\"success\"}";
       send(client_socket, response, strlen(response), 0);

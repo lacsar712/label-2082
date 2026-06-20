@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
         filter: 'all'
     };
     let notifPollTimer = null;
+    let notifPagePollTimer = null;
     let faqState = {
         category: '全部',
         keyword: ''
@@ -325,7 +326,10 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.viewSections.forEach(v => v.classList.add('hidden'));
             document.getElementById(`${tab}-tab`).classList.remove('hidden');
 
+            stopNotifPagePolling();
+
             if (tab === 'dashboard') fetchOrders();
+
             if (tab === 'my-orders') fetchMyOrders();
             if (tab === 'profile') {
                 loadProfile();
@@ -346,6 +350,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (tab === 'notifications') {
                 fetchNotifications();
                 fetchUnreadCount();
+                startNotifPagePolling();
             }
             if (tab === 'wallet') {
                 loadWalletSummary();
@@ -1611,6 +1616,23 @@ document.addEventListener('DOMContentLoaded', () => {
         if (notifPollTimer) {
             clearInterval(notifPollTimer);
             notifPollTimer = null;
+        }
+    }
+
+    function startNotifPagePolling() {
+        stopNotifPagePolling();
+        notifPagePollTimer = setInterval(() => {
+            if (currentUser) {
+                fetchNotifications();
+                fetchUnreadCount();
+            }
+        }, 10000);
+    }
+
+    function stopNotifPagePolling() {
+        if (notifPagePollTimer) {
+            clearInterval(notifPagePollTimer);
+            notifPagePollTimer = null;
         }
     }
 

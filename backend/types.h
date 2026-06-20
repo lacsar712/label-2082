@@ -82,6 +82,8 @@ typedef struct {
   char description[1000];
   char status[20];
   char created_at[32];
+  char reply[1000];
+  char reply_at[32];
 } Feedback;
 
 typedef struct {

@@ -289,7 +289,92 @@ static void escape_feedback_json(char *dst, const char *src, int max_len) {
   dst[j] = '\0';
 }
 
+static void generate_auto_reply(Feedback *fb) {
+  const char *reply_acc =
+      "你好！感谢你的反馈。关于账号问题，请尝试以下步骤：\n"
+      "1. 确认账号是否正确注册过\n"
+      "2. 检查密码大小写是否正确\n"
+      "3. 如仍无法登录，可点击登录页的\"忘记密码\"重置\n"
+      "如需进一步帮助，请提供你的注册手机号。";
+  const char *reply_task =
+      "你好！感谢你的反馈。关于任务发布问题：\n"
+      "1. 发布任务需先完成实名认证\n"
+      "2. 取件地址和送达地址请填写详细\n"
+      "3. 任务发布后2小时内无人接单可免费取消\n"
+      "如有其他疑问请随时联系我们。";
+  const char *reply_delivery =
+      "你好！感谢你的反馈。关于接单配送问题：\n"
+      "1. 接单后请尽快联系发件人确认取件时间\n"
+      "2. 如遇联系不到发件人的情况，可在订单详情页点击\"联系客服\"\n"
+      "3. 配送完成请及时上传取件码完成确认\n"
+      "感谢你的理解与支持！";
+  const char *reply_payment =
+      "你好！感谢你的反馈。关于报酬结算问题：\n"
+      "1. 订单完成后报酬自动转入账户余额\n"
+      "2. 满10元可提现到微信或支付宝，提现24小时内到账\n"
+      "3. 每日提现上限为200元\n"
+      "如有疑问请提供订单号以便查询。";
+  const char *reply_security =
+      "你好！感谢你的反馈。关于账户安全问题：\n"
+      "1. 建议定期修改密码，密码包含字母数字和符号\n"
+      "2. 不要在公共设备上勾选\"记住密码\"\n"
+      "3. 如发现账号异常，请立即联系客服冻结账号\n"
+      "我们会全力保障你的账户安全。";
+  const char *reply_suggestion =
+      "你好！非常感谢你的宝贵建议！\n"
+      "我们已将你的建议记录并反馈给产品团队评估。\n"
+      "如果建议被采纳，我们会通过站内信通知你，并赠送信用分奖励。\n"
+      "再次感谢你对校递快跑的支持！";
+  const char *reply_general =
+      "你好！感谢你的反馈，我们已收到并开始处理。\n"
+      "一般问题会在24小时内回复，紧急问题请直接联系客服电话：400-XXX-XXXX。\n"
+      "感谢你对校递快跑的支持与理解！";
+
+  const char *reply_text = reply_general;
+  const char *cat = fb->category;
+
+  if (strcmp(cat, "账号注册") == 0 || strcmp(cat, "账户安全") == 0) {
+    reply_text = (strcmp(cat, "账号注册") == 0) ? reply_acc : reply_security;
+  } else if (strcmp(cat, "任务发布") == 0) {
+    reply_text = reply_task;
+  } else if (strcmp(cat, "接单配送") == 0) {
+    reply_text = reply_delivery;
+  } else if (strcmp(cat, "报酬结算") == 0) {
+    reply_text = reply_payment;
+  } else if (strcmp(cat, "意见建议") == 0) {
+    reply_text = reply_suggestion;
+  }
+
+  strncpy(fb->reply, reply_text, sizeof(fb->reply) - 1);
+  fb->reply[sizeof(fb->reply) - 1] = '\0';
+
+  time_t t = time(NULL);
+  struct tm *tm_info = localtime(&t);
+  t += 30 * 60;
+  tm_info = localtime(&t);
+  strftime(fb->reply_at, sizeof(fb->reply_at), "%Y-%m-%d %H:%M:%S", tm_info);
+
+  strcpy(fb->status, "replied");
+}
+
+static void simulate_auto_replies() {
+  int changed = 0;
+  for (int i = 0; i < feedback_count; i++) {
+    if (strcmp(feedbacks[i].status, "pending") == 0) {
+      if (feedbacks[i].id <= 5 || feedbacks[i].id % 2 == 0) {
+        generate_auto_reply(&feedbacks[i]);
+        changed = 1;
+      }
+    }
+  }
+  if (changed) {
+    save_data();
+  }
+}
+
 void get_feedbacks_json(char *json, const char *username) {
+  simulate_auto_replies();
+
   strcat(json, "[");
   int first = 1;
 
@@ -302,18 +387,23 @@ void get_feedbacks_json(char *json, const char *username) {
       strcat(json, ",");
 
     char esc_title[200], esc_desc[2000], esc_category[100];
+    char esc_reply[2000];
     escape_feedback_json(esc_title, feedbacks[i].title, sizeof(esc_title));
     escape_feedback_json(esc_desc, feedbacks[i].description, sizeof(esc_desc));
-    escape_feedback_json(esc_category, feedbacks[i].category, sizeof(esc_category));
+    escape_feedback_json(esc_category, feedbacks[i].category,
+                         sizeof(esc_category));
+    escape_feedback_json(esc_reply, feedbacks[i].reply, sizeof(esc_reply));
 
     char item[4096];
     sprintf(item,
             "{\"id\":%d,\"username\":\"%s\",\"category\":\"%s\","
             "\"title\":\"%s\",\"description\":\"%s\",\"status\":\"%s\","
-            "\"createdAt\":\"%s\"}",
+            "\"createdAt\":\"%s\",\"reply\":\"%s\",\"replyAt\":\"%s\"}",
             feedbacks[i].id, feedbacks[i].username, esc_category,
             esc_title, esc_desc, feedbacks[i].status,
-            feedbacks[i].created_at);
+            feedbacks[i].created_at,
+            strlen(feedbacks[i].reply) > 0 ? esc_reply : "",
+            strlen(feedbacks[i].reply) > 0 ? feedbacks[i].reply_at : "");
     strcat(json, item);
     first = 0;
   }

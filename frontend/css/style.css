@@ -2479,6 +2479,31 @@ mark {
     color: #475569;
 }
 
+.feedback-empty-state {
+    text-align: center;
+    padding: 50px 20px;
+    color: #94a3b8;
+}
+
+.feedback-empty-state i {
+    font-size: 3.5rem;
+    color: #e2e8f0;
+    margin-bottom: 18px;
+    display: block;
+}
+
+.feedback-empty-state p:first-of-type {
+    font-size: 1.05rem;
+    color: #64748b;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.feedback-empty-state p:last-child {
+    font-size: 0.88rem;
+    color: #94a3b8;
+}
+
 .feedback-status {
     padding: 4px 12px;
     border-radius: 20px;

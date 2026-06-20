@@ -1947,44 +1947,50 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderUserFeedbacks(feedbacks) {
         if (!elements.feedbackList) return;
 
-        elements.feedbackList.innerHTML = '';
+        const emptyEl = document.getElementById('feedback-empty');
 
         if (!feedbacks || feedbacks.length === 0) {
-            elements.feedbackList.innerHTML = `
-                <div style="text-align:center; padding: 30px; color: #64748b;">
-                    <i class="fas fa-inbox" style="font-size: 2rem; margin-bottom: 10px; opacity: 0.5;"></i>
-                    <p>暂无反馈记录</p>
-                </div>
-            `;
+            const items = elements.feedbackList.querySelectorAll('.feedback-item');
+            items.forEach(item => item.remove());
+            if (emptyEl) emptyEl.style.display = 'block';
             return;
         }
 
+        if (emptyEl) emptyEl.style.display = 'none';
+
+        const existingItems = elements.feedbackList.querySelectorAll('.feedback-item');
+        existingItems.forEach(item => item.remove());
+
+        const statusMap = {
+            'pending': { text: '处理中', class: 'feedback-status-pending' },
+            'replied': { text: '已回复', class: 'feedback-status-resolved' },
+            'resolved': { text: '已解决', class: 'feedback-status-resolved' },
+            'closed': { text: '已关闭', class: 'feedback-status-resolved' }
+        };
+        const categoryClassMap = {
+            '账号注册': 'feedback-cat-account',
+            '任务发布': 'feedback-cat-task',
+            '接单配送': 'feedback-cat-delivery',
+            '报酬结算': 'feedback-cat-payment',
+            '账户安全': 'feedback-cat-security',
+            '意见建议': 'feedback-cat-suggestion',
+            '其他': 'feedback-cat-other'
+        };
+
         feedbacks.forEach(fb => {
-            const statusMap = {
-                'pending': { text: '处理中', class: 'feedback-status-pending' },
-                'resolved': { text: '已回复', class: 'feedback-status-resolved' },
-                'closed': { text: '已解决', class: 'feedback-status-resolved' }
-            };
-            const categoryClassMap = {
-                '账号注册': 'feedback-cat-account',
-                '任务发布': 'feedback-cat-task',
-                '接单配送': 'feedback-cat-delivery',
-                '报酬结算': 'feedback-cat-payment',
-                '账户安全': 'feedback-cat-security',
-                '意见建议': 'feedback-cat-suggestion',
-                '其他': 'feedback-cat-other'
-            };
             const status = statusMap[fb.status] || statusMap['pending'];
             const categoryClass = categoryClassMap[fb.category] || 'feedback-cat-other';
-            const isResolved = fb.status === 'resolved' || fb.status === 'closed';
+            const hasReply = fb.reply && fb.reply.length > 0;
 
             let replyHtml = '';
-            if (isResolved) {
-                const replyContent = fb.reply || '感谢你的反馈！我们已经收到并处理了你的问题，如有其他疑问欢迎继续反馈~';
+            if (hasReply) {
                 replyHtml = `
                     <div class="feedback-reply">
-                        <div class="feedback-reply-label">客服回复：</div>
-                        <div class="feedback-reply-content">${escapeHtml(replyContent)}</div>
+                        <div class="feedback-reply-label">
+                            <i class="fas fa-headset" style="margin-right: 5px;"></i>
+                            客服回复 ${fb.replyAt ? `<span style="color:#94a3b8; font-size:0.8rem; font-weight:400; margin-left:8px;">${formatDate(fb.replyAt)}</span>` : ''}
+                        </div>
+                        <div class="feedback-reply-content">${escapeHtml(fb.reply).replace(/\n/g, '<br>')}</div>
                     </div>
                 `;
             }
@@ -1998,7 +2004,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="feedback-date">${formatDate(fb.createdAt)}</span>
                 </div>
                 <div class="feedback-item-title">${escapeHtml(fb.title)}</div>
-                <div class="feedback-item-desc">${escapeHtml(fb.description)}</div>
+                <div class="feedback-item-desc">${escapeHtml(fb.description).replace(/\n/g, '<br>')}</div>
                 ${replyHtml}
             `;
             elements.feedbackList.appendChild(card);

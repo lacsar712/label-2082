@@ -488,40 +488,10 @@
                             <h3 style="font-size: 1.15rem; color: #0f172a;"><i class="fas fa-comment-dots" style="color: var(--primary); margin-right: 8px;"></i>我的反馈记录</h3>
                         </div>
                         <div class="feedback-list" id="feedback-list">
-                            <div class="feedback-item">
-                                <div class="feedback-item-header">
-                                    <span class="feedback-category feedback-cat-account">账号注册</span>
-                                    <span class="feedback-status feedback-status-pending">处理中</span>
-                                    <span class="feedback-date">2026-06-15 14:30</span>
-                                </div>
-                                <div class="feedback-item-title">无法登录账号，提示密码错误</div>
-                                <div class="feedback-item-desc">昨天修改密码后今天就无法登录了，确认密码输入正确但一直提示错误，希望能尽快处理，谢谢。</div>
-                            </div>
-                            <div class="feedback-item">
-                                <div class="feedback-item-header">
-                                    <span class="feedback-category feedback-cat-suggestion">意见建议</span>
-                                    <span class="feedback-status feedback-status-resolved">已回复</span>
-                                    <span class="feedback-date">2026-06-10 09:15</span>
-                                </div>
-                                <div class="feedback-item-title">建议增加任务备注功能</div>
-                                <div class="feedback-item-desc">希望发布任务时能增加备注字段，方便说明包裹的特殊情况，比如是否需要冷藏、是否易碎等。</div>
-                                <div class="feedback-reply">
-                                    <div class="feedback-reply-label">客服回复：</div>
-                                    <div class="feedback-reply-content">感谢你的宝贵建议！我们已将该需求纳入开发计划，预计下个版本会上线任务备注功能，敬请期待~</div>
-                                </div>
-                            </div>
-                            <div class="feedback-item">
-                                <div class="feedback-item-header">
-                                    <span class="feedback-category feedback-cat-delivery">接单配送</span>
-                                    <span class="feedback-status feedback-status-resolved">已解决</span>
-                                    <span class="feedback-date">2026-06-05 16:42</span>
-                                </div>
-                                <div class="feedback-item-title">接单后联系不到发件人</div>
-                                <div class="feedback-item-desc">接单后发件人留的联系方式无法接通，导致无法正常配送。</div>
-                                <div class="feedback-reply">
-                                    <div class="feedback-reply-label">客服回复：</div>
-                                    <div class="feedback-reply-content">已核实情况，该任务已取消，不影响你的信用分。后续如遇类似情况可点击订单详情页的"联系客服"快速处理。</div>
-                                </div>
+                            <div class="feedback-empty-state" id="feedback-empty" style="display: none;">
+                                <i class="fas fa-inbox"></i>
+                                <p>暂无反馈记录</p>
+                                <p>你可以在帮助中心提交问题或建议</p>
                             </div>
                         </div>
                     </div>

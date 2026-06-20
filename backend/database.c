@@ -1307,7 +1307,7 @@ static BadgeDef badge_definitions[] = {
   {"first_order",    "首单告捷",   "fa-flag-checkered", "#10b981", "完成第1单代取任务"},
   {"ten_orders",     "累计十单",   "fa-award",          "#6366f1", "累计完成10单代取任务"},
   {"hundred_orders", "百单达人",   "fa-crown",          "#f59e0b", "累计完成100单代取任务"},
-  {"good_reviews",   "好评如潮",   "fa-star",           "#f43f5e", "累计获得5星评价≥5次"},
+  {"good_reviews",   "好评如潮",   "fa-star",           "#f43f5e", "累计获得4星及以上评价≥3次"},
   {"rain_or_shine",  "风雨无阻",   "fa-cloud-rain",     "#0ea5e9", "累计完成代取任务≥20单"},
   {"night_owl",      "深夜侠影",   "fa-moon",           "#8b5cf6", "在22:00-06:00时段完成过订单"},
 };
@@ -1345,7 +1345,7 @@ void check_and_unlock_badges(const char *username) {
   if (!username || strlen(username) == 0) return;
 
   int completed_count = 0;
-  int five_star_count = 0;
+  int good_review_count = 0;
   int night_order = 0;
 
   for (int i = 0; i < order_count; i++) {
@@ -1353,7 +1353,7 @@ void check_and_unlock_badges(const char *username) {
     if (strcmp(orders[i].status, "completed") != 0) continue;
 
     completed_count++;
-    if (orders[i].rating == 5) five_star_count++;
+    if (orders[i].rating >= 4) good_review_count++;
 
     struct tm tm_order;
     memset(&tm_order, 0, sizeof(struct tm));
@@ -1371,7 +1371,7 @@ void check_and_unlock_badges(const char *username) {
   if (completed_count >= 1) newly_unlocked += unlock_badge(username, "first_order");
   if (completed_count >= 10) newly_unlocked += unlock_badge(username, "ten_orders");
   if (completed_count >= 100) newly_unlocked += unlock_badge(username, "hundred_orders");
-  if (five_star_count >= 5) newly_unlocked += unlock_badge(username, "good_reviews");
+  if (good_review_count >= 3) newly_unlocked += unlock_badge(username, "good_reviews");
   if (completed_count >= 20) newly_unlocked += unlock_badge(username, "rain_or_shine");
   if (night_order) newly_unlocked += unlock_badge(username, "night_owl");
 

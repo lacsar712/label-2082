@@ -1013,6 +1013,41 @@
         </div>
     </div>
 
+    <!-- Rating Modal -->
+    <div id="rating-modal" class="overlay hidden">
+        <div class="rating-modal-card">
+            <div class="rating-modal-header">
+                <h2><i class="fas fa-star" style="color: #fbbf24;"></i> 评价服务</h2>
+                <button class="modal-close-btn" onclick="document.getElementById('rating-modal').classList.add('hidden')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="rating-modal-body">
+                <div class="rating-order-info" id="rating-order-info">
+                    <span class="rating-order-label">订单：</span>
+                    <span class="rating-order-value" id="rating-order-pkg"></span>
+                </div>
+                <div class="rating-prompt">请为本次跑腿服务打分：</div>
+                <div class="rating-stars" id="rating-stars">
+                    <i class="far fa-star" data-rating="1"></i>
+                    <i class="far fa-star" data-rating="2"></i>
+                    <i class="far fa-star" data-rating="3"></i>
+                    <i class="far fa-star" data-rating="4"></i>
+                    <i class="far fa-star" data-rating="5"></i>
+                </div>
+                <div class="rating-selected-label" id="rating-selected-label">请选择星级</div>
+                <input type="hidden" id="rating-selected-value" value="0">
+                <input type="hidden" id="rating-order-id" value="">
+                <div class="rating-actions">
+                    <button type="button" class="btn-outline" id="rating-cancel-btn" style="flex:1;">暂不评价</button>
+                    <button type="button" class="btn-primary" id="rating-submit-btn" style="flex:1; background: #fbbf24;" disabled>
+                        <i class="fas fa-check"></i> 确认收货并评价
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Report Modal -->
     <div id="report-modal" class="overlay hidden">
         <div class="report-modal-card">

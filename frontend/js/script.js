@@ -435,7 +435,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     `<button class="btn-primary" onclick="updateStatus(${order.id}, 'delivered')">确认送达</button>` : ''}
 
                     ${isMyOrders && myOrdersView === 'created' && (order.status === 'accepted' || order.status === 'delivered') ?
-                    `<button class="btn-primary" style="background:var(--accent);color:#fff" onclick="updateStatus(${order.id}, 'completed')">确认收货并支付 / 评价</button>` : ''}
+                    `<button class="btn-primary" style="background:var(--accent);color:#fff" onclick="window._openRatingModal(${order.id}, ${JSON.stringify(order.package).replace(/"/g, '&quot;')})">确认收货并支付 / 评价</button>` : ''}
 
                     ${isMyOrders && myOrdersView === 'created' && order.status === 'pending' ?
                     `<div style="display: flex; gap: 8px; width: 100%;">
@@ -520,8 +520,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Status Update
-    window.updateStatus = async (id, status) => {
+    window.updateStatus = async (id, status, rating = 0) => {
         const payload = { id, status, worker: currentUser.username };
+        if (status === 'completed' && rating > 0) payload.rating = rating;
         try {
             const resp = await fetch('/api/update_status', {
                 method: 'POST',
@@ -535,7 +536,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (status === 'accepted') showToast('接单成功，请尽快送达！');
             else if (status === 'delivered') showToast('已送达，等待发单人确认。');
-            else if (status === 'completed') showToast('任务完成，感谢使用！');
+            else if (status === 'completed') {
+                if (rating >= 4) showToast('任务完成！感谢您的好评 ⭐');
+                else if (rating > 0) showToast('任务完成，感谢使用！');
+                else showToast('任务完成，感谢使用！');
+            }
             else if (status === 'cancelled') showToast('已成功撤回该订单。');
 
             if (document.getElementById('dashboard-tab').classList.contains('hidden')) fetchMyOrders();
@@ -558,6 +563,72 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (err) { showToast('操作失败'); }
     };
+
+    // --- Rating Modal ---
+    window._openRatingModal = (orderId, orderPackage) => {
+        const modal = document.getElementById('rating-modal');
+        document.getElementById('rating-order-id').value = orderId;
+        document.getElementById('rating-order-pkg').textContent = orderPackage;
+        document.getElementById('rating-selected-value').value = '0';
+        document.getElementById('rating-selected-label').textContent = '请选择星级';
+        document.getElementById('rating-submit-btn').disabled = true;
+
+        document.querySelectorAll('#rating-stars i').forEach(star => {
+            star.classList.remove('active', 'fas');
+            star.classList.add('far');
+        });
+
+        document.querySelectorAll('#rating-stars i').forEach(star => {
+            const rating = parseInt(star.dataset.rating, 10);
+
+            star.onclick = () => {
+                document.getElementById('rating-selected-value').value = rating.toString();
+                updateStarDisplay(rating);
+                const labels = ['', '非常差 😞', '不太好 😕', '一般 😐', '满意 😊', '超棒！🤩'];
+                document.getElementById('rating-selected-label').textContent = `${rating}星 - ${labels[rating]}`;
+                document.getElementById('rating-submit-btn').disabled = false;
+            };
+
+            star.onmouseenter = () => updateStarDisplay(rating, true);
+            star.onmouseleave = () => {
+                const current = parseInt(document.getElementById('rating-selected-value').value, 10);
+                updateStarDisplay(current || 0);
+            };
+        });
+
+        modal.classList.remove('hidden');
+    };
+
+    function updateStarDisplay(rating, hover = false) {
+        document.querySelectorAll('#rating-stars i').forEach(star => {
+            const sVal = parseInt(star.dataset.rating, 10);
+            if (sVal <= rating) {
+                star.classList.add('active', 'fas');
+                star.classList.remove('far');
+            } else {
+                star.classList.remove('active', 'fas');
+                star.classList.add('far');
+            }
+        });
+    }
+
+    document.addEventListener('click', (e) => {
+        if (e.target && e.target.id === 'rating-submit-btn') {
+            const orderId = parseInt(document.getElementById('rating-order-id').value, 10);
+            const rating = parseInt(document.getElementById('rating-selected-value').value, 10);
+            document.getElementById('rating-modal').classList.add('hidden');
+            if (rating > 0) {
+                updateStatus(orderId, 'completed', rating);
+            } else {
+                updateStatus(orderId, 'completed', 0);
+            }
+        }
+        if (e.target && e.target.id === 'rating-cancel-btn') {
+            const orderId = parseInt(document.getElementById('rating-order-id').value, 10);
+            document.getElementById('rating-modal').classList.add('hidden');
+            updateStatus(orderId, 'completed', 0);
+        }
+    });
 
     // --- Share Code ---
     let currentShareCodeOrderId = null;

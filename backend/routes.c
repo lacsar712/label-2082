@@ -248,6 +248,7 @@ static void handle_create_order(int client_socket, char *body) {
 static void handle_update_status(int client_socket, char *body) {
   int id = -1;
   char new_status[20] = "", worker[50] = "";
+  int rating = 0;
 
   char *id_ptr = strstr(body, "\"id\":");
   if (id_ptr)
@@ -255,6 +256,7 @@ static void handle_update_status(int client_socket, char *body) {
 
   parse_json_string(body, "status", new_status, sizeof(new_status));
   parse_json_string(body, "worker", worker, sizeof(worker));
+  rating = parse_json_int(body, "rating");
 
   for (int i = 0; i < order_count; i++) {
     if (orders[i].id == id) {
@@ -284,6 +286,10 @@ static void handle_update_status(int client_socket, char *body) {
                    orders[i].package_info);
           create_notification(orders[i].creator, "order", "订单已送达", summary, related_id);
         } else if (strcmp(new_status, "completed") == 0) {
+          if (rating >= 1 && rating <= 5) {
+            orders[i].rating = rating;
+            log_message(LOG_INFO, "Order %d rated: %d stars", id, rating);
+          }
           snprintf(summary, sizeof(summary), "订单（%s）已确认完成，感谢您的服务！",
                    orders[i].package_info);
           create_notification(orders[i].worker, "order", "订单已完成", summary, related_id);

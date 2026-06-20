@@ -706,7 +706,7 @@ static void seed_demo_data() {
   }
 }
 
-void get_stations_json(char *json) {
+void get_stations_json(char *json, const char *exclude_user) {
   typedef struct {
     const char *id;
     const char *name;
@@ -738,6 +738,10 @@ void get_stations_json(char *json) {
     for (int i = 0; i < order_count; i++) {
       if (strcmp(orders[i].status, "pending") == 0 &&
           strstr(orders[i].pickup_addr, stations[s].keyword) != NULL) {
+        if (exclude_user && strlen(exclude_user) > 0 &&
+            strcmp(orders[i].creator, exclude_user) == 0) {
+          continue;
+        }
         pending++;
       }
     }

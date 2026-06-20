@@ -821,7 +821,18 @@ static void handle_get_feedback(int client_socket, char *query_string) {
               username[0] ? username : "all");
 }
 
-static void handle_get_stations(int client_socket) {
+static void handle_get_stations(int client_socket, char *query_string) {
+  char exclude_user[50] = "";
+
+  if (query_string) {
+    char *u_ptr = strstr(query_string, "username=");
+    if (u_ptr) {
+      char decoded[50] = {0};
+      sscanf(u_ptr + 9, "%[^& ]", decoded);
+      strncpy(exclude_user, decoded, sizeof(exclude_user) - 1);
+    }
+  }
+
   char response_header[] =
       "HTTP/1.1 200 OK\r\nContent-Type: application/json; "
       "charset=UTF-8\r\n\r\n";
@@ -833,11 +844,12 @@ static void handle_get_stations(int client_socket) {
     return;
   }
   memset(json, 0, 8 * 1024);
-  get_stations_json(json);
+  get_stations_json(json, exclude_user);
   send(client_socket, json, strlen(json), 0);
   free(json);
 
-  log_message(LOG_INFO, "Stations fetched");
+  log_message(LOG_INFO, "Stations fetched - exclude_user:%s",
+              exclude_user[0] ? exclude_user : "none");
 }
 
 static void handle_get_wallet_summary(int client_socket, char *query_string) {
@@ -1555,7 +1567,9 @@ void handle_request(int client_socket) {
     char *q = strstr(path_start, "?");
     handle_get_feedback(client_socket, q);
   } else if (strstr(buffer, "GET /api/stations")) {
-    handle_get_stations(client_socket);
+    char *path_start = strstr(buffer, "GET /api/stations");
+    char *q = strstr(path_start, "?");
+    handle_get_stations(client_socket, q);
   } else if (strstr(buffer, "GET /api/wallet/summary")) {
     char *path_start = strstr(buffer, "GET /api/wallet/summary");
     char *q = strstr(path_start, "?");

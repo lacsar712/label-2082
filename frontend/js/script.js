@@ -2061,7 +2061,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchStations() {
         try {
-            const resp = await fetch('/api/stations');
+            const url = currentUser && currentUser.username
+                ? `/api/stations?username=${encodeURIComponent(currentUser.username)}`
+                : '/api/stations';
+            const resp = await fetch(url);
             const stations = await resp.json();
             stationsState.data = stations;
             renderStations();
@@ -2300,6 +2303,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     <i class="fas fa-location-dot"></i>
                     <span class="popup-info-label">位置区域</span>
                     <span class="popup-info-value">${escapeHtml(station.gate)}</span>
+                </div>
+                <div class="popup-info-row">
+                    <i class="fas fa-map-location-dot"></i>
+                    <span class="popup-info-label">示意图坐标</span>
+                    <span class="popup-info-value">X: ${station.mapX}%, Y: ${station.mapY}%</span>
                 </div>
             </div>
             <div class="popup-footer">

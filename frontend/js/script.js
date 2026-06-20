@@ -177,7 +177,21 @@ document.addEventListener('DOMContentLoaded', () => {
         shareCodeCopyBtn: document.getElementById('share-code-copy-btn'),
         shareCodeGenerateBtn: document.getElementById('share-code-generate-btn'),
         shareCodeShareText: document.getElementById('share-code-share-text'),
-        shareCodeCopyShareBtn: document.getElementById('share-code-copy-share-btn')
+        shareCodeCopyShareBtn: document.getElementById('share-code-copy-share-btn'),
+        lfDetailModal: document.getElementById('lf-detail-modal'),
+        lfDetailCard: document.querySelector('#lf-detail-modal .lf-detail-card'),
+        lfDetailTypeBadge: document.getElementById('lf-detail-type-badge'),
+        lfDetailCatTag: document.getElementById('lf-detail-cat-tag'),
+        lfDetailTitle: document.getElementById('lf-detail-title'),
+        lfDetailDesc: document.getElementById('lf-detail-desc'),
+        lfDetailLocation: document.getElementById('lf-detail-location'),
+        lfDetailContact: document.getElementById('lf-detail-contact'),
+        lfDetailAvatar: document.getElementById('lf-detail-avatar'),
+        lfDetailPubName: document.getElementById('lf-detail-pub-name'),
+        lfDetailCreated: document.getElementById('lf-detail-created'),
+        lfDetailUpdatedWrap: document.getElementById('lf-detail-updated-wrap'),
+        lfDetailUpdated: document.getElementById('lf-detail-updated'),
+        lfDetailActions: document.getElementById('lf-detail-actions')
     };
 
     // --- Authentication ---
@@ -1195,15 +1209,94 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function renderLostFound(items) {
-        if (!items || items.length === 0) {
+    function hasActiveFilters() {
+        return lfState.keyword ||
+               lfState.type !== '全部' ||
+               lfState.category !== '全部' ||
+               lfState.view === 'mine';
+    }
+
+    function renderEmptyState() {
+        // 区分三种情况
+        if (lfState.view === 'mine') {
+            // 我发布的为空
+            elements.lfMasonry.innerHTML = `
+                <div class="lf-empty-state no-results">
+                    <i class="fas fa-feather-alt"></i>
+                    <h3>你还没有发布过布告</h3>
+                    <p>去发布你的第一条失物招领吧！</p>
+                    <button class="lf-empty-clear-btn" onclick="document.getElementById('lf-post-btn').click()">
+                        <i class="fas fa-plus-circle"></i> 立即发布布告
+                    </button>
+                </div>
+            `;
+        } else if (hasActiveFilters()) {
+            // 有筛选条件时 - 显示"筛选无结果"
+            const chips = [];
+            if (lfState.keyword) {
+                chips.push(`<span class="lf-filter-chip active-keyword">
+                    <i class="fas fa-search"></i> 关键词: "${escapeHtml(lfState.keyword)}"
+                </span>`);
+            }
+            if (lfState.type !== '全部') {
+                const typeClass = lfState.type === 'found' ? 'found' : '';
+                const typeText = lfState.type === 'lost' ? '丢失' : '拾取';
+                const typeIcon = lfState.type === 'lost' ? 'fa-search' : 'fa-hand-holding-heart';
+                chips.push(`<span class="lf-filter-chip active-type ${typeClass}">
+                    <i class="fas ${typeIcon}"></i> 类型: ${typeText}
+                </span>`);
+            }
+            if (lfState.category !== '全部') {
+                chips.push(`<span class="lf-filter-chip active-cat">
+                    <i class="fas fa-tag"></i> 分类: ${escapeHtml(lfState.category)}
+                </span>`);
+            }
+
+            elements.lfMasonry.innerHTML = `
+                <div class="lf-empty-state no-results">
+                    <i class="fas fa-search-minus"></i>
+                    <h3>没有匹配的布告</h3>
+                    <p>当前筛选条件下暂无结果，试试调整筛选条件吧</p>
+                    ${chips.length > 0 ? `<div class="lf-empty-state-filter-tags">${chips.join('')}</div>` : ''}
+                    <button class="lf-empty-clear-btn" onclick="clearLfFilters()">
+                        <i class="fas fa-eraser"></i> 清除所有筛选
+                    </button>
+                </div>
+            `;
+        } else {
+            // 真的系统里没数据
             elements.lfMasonry.innerHTML = `
                 <div class="lf-empty-state">
                     <i class="fas fa-inbox"></i>
                     <h3>暂无布告</h3>
-                    <p>${lfState.view === 'mine' ? '你还没有发布过布告，快去发布第一条吧！' : '还没有任何布告信息，点击右上角发布吧！'}</p>
+                    <p>还没有任何布告信息，点击右上角发布吧！</p>
                 </div>
             `;
+        }
+    }
+
+    window.clearLfFilters = function() {
+        // 重置所有筛选
+        lfState.type = '全部';
+        lfState.category = '全部';
+        lfState.keyword = '';
+        lfState.view = 'all';
+
+        // 同步UI
+        elements.lfFilterBtns.forEach(b => {
+            b.classList.toggle('active', b.dataset.lfType === '全部');
+        });
+        elements.lfCategorySelect.value = '全部';
+        elements.lfSearchInput.value = '';
+        elements.lfViewAll.classList.add('active');
+        elements.lfViewMine.classList.remove('active');
+
+        fetchLostFound();
+    };
+
+    function renderLostFound(items) {
+        if (!items || items.length === 0) {
+            renderEmptyState();
             return;
         }
 
@@ -1221,9 +1314,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span class="lf-card-type-badge">
                     <i class="fas ${typeIcon}"></i> ${typeText}
                 </span>
-                <span class="lf-card-cat-tag">${item.category}</span>
+                <span class="lf-card-cat-tag">${escapeHtml(item.category)}</span>
                 <h3 class="lf-card-title">${escapeHtml(item.title)}</h3>
-                <p class="lf-card-desc">${escapeHtml(item.description)}</p>
+                <div class="lf-card-desc-wrap">
+                    <p class="lf-card-desc">${escapeHtml(item.description)}</p>
+                    <div class="lf-card-desc-fade">
+                        <span class="lf-card-expand"><i class="fas fa-expand"></i> 查看详情</span>
+                    </div>
+                </div>
                 <div class="lf-card-meta">
                     <div class="lf-card-meta-row">
                         <i class="fas fa-map-marker-alt"></i>
@@ -1244,18 +1342,59 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     ${isOwner ? `
                     <div class="lf-card-actions">
-                        <button class="lf-action-btn edit" title="编辑" onclick="editLostFound(${item.id})">
+                        <button class="lf-action-btn edit" title="编辑" onclick="event.stopPropagation(); editLostFound(${item.id})">
                             <i class="fas fa-edit"></i>
                         </button>
-                        <button class="lf-action-btn offline" title="下架" onclick="offlineLostFound(${item.id})">
+                        <button class="lf-action-btn offline" title="下架" onclick="event.stopPropagation(); offlineLostFound(${item.id})">
                             <i class="fas fa-eye-slash"></i>
                         </button>
                     </div>
                     ` : ''}
                 </div>
             `;
+
+            card.addEventListener('click', () => openLfDetail(item));
             elements.lfMasonry.appendChild(card);
         });
+    }
+
+    function openLfDetail(item) {
+        const isOwner = item.creator === currentUser.username;
+        const typeIcon = item.type === 'lost' ? 'fa-search' : 'fa-hand-holding-heart';
+        const typeText = item.type === 'lost' ? '丢失启事' : '拾取招领';
+
+        elements.lfDetailCard.className = `lf-detail-card ${item.type}`;
+        elements.lfDetailTypeBadge.innerHTML = `<i class="fas ${typeIcon}"></i> ${typeText}`;
+        elements.lfDetailCatTag.textContent = item.category;
+        elements.lfDetailTitle.textContent = item.title;
+        elements.lfDetailDesc.textContent = item.description;
+        elements.lfDetailLocation.textContent = item.location;
+        elements.lfDetailContact.textContent = item.contact;
+        elements.lfDetailAvatar.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(item.creator)}`;
+        elements.lfDetailPubName.textContent = item.creatorName;
+        elements.lfDetailCreated.textContent = item.createdAt;
+
+        if (item.updatedAt && item.updatedAt !== item.createdAt) {
+            elements.lfDetailUpdated.textContent = item.updatedAt;
+            elements.lfDetailUpdatedWrap.classList.remove('hidden');
+        } else {
+            elements.lfDetailUpdatedWrap.classList.add('hidden');
+        }
+
+        if (isOwner) {
+            elements.lfDetailActions.innerHTML = `
+                <button class="lf-detail-action-btn edit" onclick="document.getElementById('lf-detail-modal').classList.add('hidden'); editLostFound(${item.id})">
+                    <i class="fas fa-edit"></i> 编辑
+                </button>
+                <button class="lf-detail-action-btn offline" onclick="document.getElementById('lf-detail-modal').classList.add('hidden'); offlineLostFound(${item.id})">
+                    <i class="fas fa-eye-slash"></i> 下架
+                </button>
+            `;
+        } else {
+            elements.lfDetailActions.innerHTML = '';
+        }
+
+        elements.lfDetailModal.classList.remove('hidden');
     }
 
     function escapeHtml(str) {

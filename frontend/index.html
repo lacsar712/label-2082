@@ -1175,7 +1175,58 @@
         </div>
     </div>
 
-    <script src="script.js?v=6"></script>
+    <!-- Lost & Found Detail Modal -->
+    <div id="lf-detail-modal" class="overlay hidden">
+        <div class="lf-detail-card">
+            <div class="lf-detail-header" id="lf-detail-header">
+                <div class="lf-detail-type-area">
+                    <span class="lf-detail-type-badge" id="lf-detail-type-badge">
+                        <i class="fas fa-search"></i> 丢失启事
+                    </span>
+                    <span class="lf-detail-cat-tag" id="lf-detail-cat-tag">包具</span>
+                </div>
+                <button class="lf-modal-close" onclick="document.getElementById('lf-detail-modal').classList.add('hidden')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="lf-detail-body">
+                <h2 class="lf-detail-title" id="lf-detail-title">标题</h2>
+                <p class="lf-detail-desc" id="lf-detail-desc">详细描述内容</p>
+
+                <div class="lf-detail-info-grid">
+                    <div class="lf-detail-info-item">
+                        <div class="lf-detail-info-icon loc"><i class="fas fa-map-marker-alt"></i></div>
+                        <div class="lf-detail-info-meta">
+                            <span class="lf-detail-info-label">发现/丢失地点</span>
+                            <span class="lf-detail-info-value" id="lf-detail-location">图书馆三楼</span>
+                        </div>
+                    </div>
+                    <div class="lf-detail-info-item">
+                        <div class="lf-detail-info-icon contact"><i class="fas fa-address-book"></i></div>
+                        <div class="lf-detail-info-meta">
+                            <span class="lf-detail-info-label">联系方式</span>
+                            <span class="lf-detail-info-value" id="lf-detail-contact">138****1234</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="lf-detail-footer">
+                <div class="lf-detail-publisher">
+                    <img id="lf-detail-avatar" src="" class="lf-detail-avatar" alt="">
+                    <div class="lf-detail-pub-info">
+                        <span class="lf-detail-pub-name" id="lf-detail-pub-name">发布者</span>
+                        <span class="lf-detail-times">
+                            <span>发布于 <span id="lf-detail-created">2025-01-01</span></span>
+                            <span id="lf-detail-updated-wrap" class="hidden"> · 更新于 <span id="lf-detail-updated">2025-01-01</span></span>
+                        </span>
+                    </div>
+                </div>
+                <div class="lf-detail-actions" id="lf-detail-actions"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js?v=7"></script>
 </body>
 
 </html>

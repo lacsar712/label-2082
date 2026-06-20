@@ -44,6 +44,10 @@ int record_wallet_transaction(const char *username, const char *type, double amo
 void get_wallet_txns_json(char *json, const char *username, const char *type_filter, const char *month);
 void get_wallet_summary_json(char *json, const char *username);
 double get_user_balance(const char *username);
+int wallet_recharge(const char *username, double amount, const char *method);
+int wallet_withdraw(const char *username, double amount, const char *method);
+int pre_deduct_balance(const char *username, double amount, const char *description, const char *order_id);
+int refund_pre_deducted(const char *username, double amount, const char *description, const char *order_id);
 
 void get_templates_json(char *json, const char *creator);
 int create_template(const char *creator, const char *template_name, const char *package_info,

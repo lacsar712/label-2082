@@ -46,6 +46,7 @@ typedef struct {
   char created_at[32];
   int rating;
   int use_balance_deduction;
+  int is_pre_deducted;
 } Order;
 
 typedef struct {

@@ -118,6 +118,17 @@ document.addEventListener('DOMContentLoaded', () => {
         profileWalletCard: document.querySelector('.profile-wallet-card'),
         pkgUseBalance: document.getElementById('pkg-use-balance'),
         pkgBalanceAvailable: document.getElementById('pkg-balance-available'),
+        rechargeModal: document.getElementById('recharge-modal'),
+        rechargeForm: document.getElementById('recharge-form'),
+        rechargeAmount: document.getElementById('recharge-amount'),
+        rechargeMethod: document.getElementById('recharge-method'),
+        withdrawModal: document.getElementById('withdraw-modal'),
+        withdrawForm: document.getElementById('withdraw-form'),
+        withdrawAmount: document.getElementById('withdraw-amount'),
+        withdrawMethod: document.getElementById('withdraw-method'),
+        withdrawBalance: document.getElementById('withdraw-balance'),
+        walletRechargeBtn: document.querySelector('.wallet-header-card .wallet-action-btn:first-child'),
+        walletWithdrawBtn: document.querySelector('.wallet-header-card .wallet-action-btn:last-child'),
         btnFromTemplate: document.getElementById('btn-from-template'),
         btnSaveTemplate: document.getElementById('btn-save-template'),
         saveTemplateModal: document.getElementById('save-template-modal'),
@@ -494,12 +505,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-            if (resp.ok) {
+            const data = await resp.json();
+            if (resp.ok && data.status === 'success') {
                 showToast('发布成功！');
+                if (useBalance && typeof data.newBalance === 'number') {
+                    updateBalanceDisplay(data.newBalance);
+                }
                 elements.orderForm.reset();
                 document.querySelector('[data-tab="dashboard"]').click();
             } else {
-                showToast('发布失败');
+                showToast(data.message || '发布失败');
             }
         } catch (err) { showToast('发布失败'); }
     }
@@ -528,6 +543,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (status === 'completed' || status === 'delivered') {
                 loadBadges();
+            }
+
+            if (status === 'completed' || status === 'cancelled') {
+                try {
+                    const summaryResp = await fetch(`/api/wallet/summary?username=${encodeURIComponent(currentUser.username)}`);
+                    if (summaryResp.ok) {
+                        const summary = await summaryResp.json();
+                        updateBalanceDisplay(summary.balance);
+                    }
+                } catch (e) {
+                    console.warn('Failed to refresh balance after status update');
+                }
             }
         } catch (err) { showToast('操作失败'); }
     };
@@ -777,9 +804,16 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('stat-credit').textContent = '98';
             
             // Update balance display
-            const statBalance = document.getElementById('stat-balance');
-            if (statBalance) {
-                statBalance.textContent = (currentUser.balance || 0).toFixed(2);
+            if (typeof updateBalanceDisplay === 'function') {
+                updateBalanceDisplay(currentUser.balance || 0);
+            } else {
+                const statBalance = document.getElementById('stat-balance');
+                if (statBalance) {
+                    statBalance.textContent = (currentUser.balance || 0).toFixed(2);
+                }
+                if (elements.pkgBalanceAvailable) {
+                    elements.pkgBalanceAvailable.textContent = (currentUser.balance || 0).toFixed(2);
+                }
             }
         } catch (err) {
             console.error('Failed to load profile stats:', err);
@@ -2456,6 +2490,120 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Wallet Logic ---
+    function updateBalanceDisplay(newBalance) {
+        currentUser.balance = newBalance;
+        localStorage.setItem('user', JSON.stringify(currentUser));
+
+        if (elements.walletBalance) {
+            elements.walletBalance.textContent = newBalance.toFixed(2);
+        }
+        const statBalance = document.getElementById('stat-balance');
+        if (statBalance) {
+            statBalance.textContent = newBalance.toFixed(2);
+        }
+        if (elements.pkgBalanceAvailable) {
+            elements.pkgBalanceAvailable.textContent = newBalance.toFixed(2);
+        }
+        if (elements.withdrawBalance) {
+            elements.withdrawBalance.textContent = newBalance.toFixed(2);
+        }
+    }
+
+    if (elements.walletRechargeBtn) {
+        elements.walletRechargeBtn.onclick = () => {
+            if (elements.rechargeAmount) elements.rechargeAmount.value = '';
+            elements.rechargeModal.classList.remove('hidden');
+        };
+    }
+
+    if (elements.walletWithdrawBtn) {
+        elements.walletWithdrawBtn.onclick = () => {
+            if (elements.withdrawAmount) elements.withdrawAmount.value = '';
+            if (elements.withdrawBalance) {
+                elements.withdrawBalance.textContent = (currentUser.balance || 0).toFixed(2);
+            }
+            elements.withdrawModal.classList.remove('hidden');
+        };
+    }
+
+    if (elements.rechargeForm) {
+        elements.rechargeForm.onsubmit = async (e) => {
+            e.preventDefault();
+            const amount = parseFloat(elements.rechargeAmount.value);
+            const method = elements.rechargeMethod.value;
+            if (!amount || amount <= 0) {
+                showToast('请输入有效的充值金额');
+                return;
+            }
+            if (amount > 10000) {
+                showToast('单笔充值上限为10000元');
+                return;
+            }
+            try {
+                const resp = await fetch('/api/wallet/recharge', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: currentUser.username,
+                        amount: amount,
+                        method: method
+                    })
+                });
+                const data = await resp.json();
+                if (resp.ok && data.status === 'success') {
+                    updateBalanceDisplay(data.newBalance);
+                    showToast(`充值成功！已充值 ¥${amount.toFixed(2)}`);
+                    elements.rechargeModal.classList.add('hidden');
+                    loadWalletSummary();
+                    loadWalletTransactions();
+                } else {
+                    showToast(data.message || '充值失败');
+                }
+            } catch (err) {
+                showToast('充值失败，请重试');
+            }
+        };
+    }
+
+    if (elements.withdrawForm) {
+        elements.withdrawForm.onsubmit = async (e) => {
+            e.preventDefault();
+            const amount = parseFloat(elements.withdrawAmount.value);
+            const method = elements.withdrawMethod.value;
+            if (!amount || amount <= 0) {
+                showToast('请输入有效的提现金额');
+                return;
+            }
+            if (amount > (currentUser.balance || 0)) {
+                showToast('余额不足');
+                return;
+            }
+            try {
+                const resp = await fetch('/api/wallet/withdraw', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: currentUser.username,
+                        amount: amount,
+                        method: method
+                    })
+                });
+                const data = await resp.json();
+                if (resp.ok && data.status === 'success') {
+                    updateBalanceDisplay(data.newBalance);
+                    showToast(`提现成功！已提现 ¥${amount.toFixed(2)}`);
+                    elements.withdrawModal.classList.add('hidden');
+                    loadWalletSummary();
+                    loadWalletTransactions();
+                } else {
+                    showToast(data.message || '提现失败');
+                }
+            } catch (err) {
+                showToast('提现失败，请重试');
+            }
+        };
+    }
+
     async function loadWalletSummary() {
         try {
             const resp = await fetch(`/api/wallet/summary?username=${encodeURIComponent(currentUser.username)}`);
@@ -2467,16 +2615,7 @@ document.addEventListener('DOMContentLoaded', () => {
             elements.walletMonthIncome.textContent = data.monthIncome.toFixed(2);
             elements.walletMonthExpense.textContent = data.monthExpense.toFixed(2);
             
-            currentUser.balance = data.balance;
-            localStorage.setItem('user', JSON.stringify(currentUser));
-            
-            const statBalance = document.getElementById('stat-balance');
-            if (statBalance) {
-                statBalance.textContent = data.balance.toFixed(2);
-            }
-            if (elements.pkgBalanceAvailable) {
-                elements.pkgBalanceAvailable.textContent = data.balance.toFixed(2);
-            }
+            updateBalanceDisplay(data.balance);
         } catch (err) {
             console.error('Failed to load wallet summary:', err);
         }

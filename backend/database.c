@@ -77,6 +77,48 @@ double get_user_balance(const char *username) {
   return 0.0;
 }
 
+int wallet_recharge(const char *username, double amount, const char *method) {
+  if (!username || strlen(username) == 0 || amount <= 0) {
+    return -1;
+  }
+  char desc[200];
+  char remark[100];
+  snprintf(desc, sizeof(desc), "账户充值");
+  snprintf(remark, sizeof(remark), "充值方式：%s",
+           method && strlen(method) > 0 ? method : "未知");
+  return add_wallet_transaction(username, "income", amount, desc, "", remark);
+}
+
+int wallet_withdraw(const char *username, double amount, const char *method) {
+  if (!username || strlen(username) == 0 || amount <= 0) {
+    return -1;
+  }
+  char desc[200];
+  char remark[100];
+  snprintf(desc, sizeof(desc), "账户提现");
+  snprintf(remark, sizeof(remark), "提现方式：%s",
+           method && strlen(method) > 0 ? method : "未知");
+  return add_wallet_transaction(username, "expense", amount, desc, "", remark);
+}
+
+int pre_deduct_balance(const char *username, double amount, const char *description, const char *order_id) {
+  if (!username || strlen(username) == 0 || amount <= 0) {
+    return -1;
+  }
+  char remark[100];
+  snprintf(remark, sizeof(remark), "订单预扣款（待完成）");
+  return add_wallet_transaction(username, "expense", amount, description, order_id, remark);
+}
+
+int refund_pre_deducted(const char *username, double amount, const char *description, const char *order_id) {
+  if (!username || strlen(username) == 0 || amount <= 0) {
+    return -1;
+  }
+  char remark[100];
+  snprintf(remark, sizeof(remark), "订单取消，退款");
+  return add_wallet_transaction(username, "income", amount, description, order_id, remark);
+}
+
 int add_wallet_transaction(const char *username, const char *type, double amount,
                             const char *description, const char *order_id,
                             const char *remark) {

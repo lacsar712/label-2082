@@ -193,15 +193,51 @@ static void handle_create_order(int client_socket, char *body) {
   strftime(new_order.created_at, sizeof(new_order.created_at),
            "%Y-%m-%d %H:%M:%S", tm_info);
 
+  double reward_amount = 0.0;
+  sscanf(new_order.reward, "%lf", &reward_amount);
+
+  char related_id[20];
+  snprintf(related_id, sizeof(related_id), "#%d", new_order.id);
+
+  if (new_order.use_balance_deduction && reward_amount > 0) {
+    char desc[200];
+    snprintf(desc, sizeof(desc), "发布悬赏预扣款：%s", new_order.package_info);
+    int rc = pre_deduct_balance(new_order.creator, reward_amount, desc, related_id);
+    if (rc == -2) {
+      log_message(LOG_WARN, "Order create failed: insufficient balance for %s", new_order.creator);
+      char response[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+                        "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"余额不足\"}";
+      send(client_socket, response, strlen(response), 0);
+      return;
+    } else if (rc < 0) {
+      log_message(LOG_ERROR, "Order create failed: pre-deduct failed");
+      char response[] = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: "
+                        "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"扣款失败\"}";
+      send(client_socket, response, strlen(response), 0);
+      return;
+    }
+    new_order.is_pre_deducted = 1;
+  }
+
   if (order_count < MAX_ORDERS) {
     orders[order_count++] = new_order;
     save_data();
-    log_message(LOG_INFO, "Order created: ID=%d by %s", new_order.id,
-                new_order.creator);
-    char response[] = "HTTP/1.1 200 OK\r\nContent-Type: "
-                      "application/json\r\n\r\n{\"status\":\"success\"}";
-    send(client_socket, response, strlen(response), 0);
+    log_message(LOG_INFO, "Order created: ID=%d by %s, use_balance=%d, pre_deducted=%d",
+                new_order.id, new_order.creator, new_order.use_balance_deduction,
+                new_order.is_pre_deducted);
+
+    double new_balance = get_user_balance(new_order.creator);
+    char resp[256];
+    snprintf(resp, sizeof(resp),
+             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+             "{\"status\":\"success\",\"newBalance\":%.2f}", new_balance);
+    send(client_socket, resp, strlen(resp), 0);
   } else {
+    if (new_order.is_pre_deducted) {
+      char desc[200];
+      snprintf(desc, sizeof(desc), "发布悬赏预扣款：%s", new_order.package_info);
+      refund_pre_deducted(new_order.creator, reward_amount, desc, related_id);
+    }
     log_message(LOG_ERROR, "Failed to create order: max orders reached");
     char response[] = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: "
                       "application/json\r\n\r\n{\"status\":\"error\"}";
@@ -278,11 +314,11 @@ static void handle_update_status(int client_socket, char *body) {
               snprintf(desc_expense, sizeof(desc_expense),
                        "发布悬赏：%s", orders[i].package_info);
               char remark_expense[100];
-              if (orders[i].use_balance_deduction) {
+              if (orders[i].use_balance_deduction && !orders[i].is_pre_deducted) {
                 strcpy(remark_expense, "余额抵扣支付");
                 add_wallet_transaction(orders[i].creator, "expense", reward_amount,
                                        desc_expense, related_id, remark_expense);
-              } else {
+              } else if (!orders[i].use_balance_deduction) {
                 strcpy(remark_expense, "线下支付");
                 record_wallet_transaction(orders[i].creator, "expense", reward_amount,
                                           desc_expense, related_id, remark_expense);
@@ -296,6 +332,21 @@ static void handle_update_status(int client_socket, char *body) {
             snprintf(summary, sizeof(summary), "订单（%s）已被发布者撤回",
                      orders[i].package_info);
             create_notification(orders[i].worker, "order", "订单已被撤回", summary, related_id);
+          }
+
+          if (strcmp(old_status, "cancelled") != 0) {
+            if (orders[i].is_pre_deducted) {
+              double reward_amount = 0.0;
+              sscanf(orders[i].reward, "%lf", &reward_amount);
+              if (reward_amount > 0) {
+                char desc_refund[200];
+                snprintf(desc_refund, sizeof(desc_refund),
+                         "发布悬赏退款：%s", orders[i].package_info);
+                refund_pre_deducted(orders[i].creator, reward_amount, desc_refund, related_id);
+                orders[i].is_pre_deducted = 0;
+                save_data();
+              }
+            }
           }
         }
       }
@@ -946,6 +997,104 @@ static void handle_get_wallet_txns(int client_socket, char *query_string) {
               username, type_filter, month[0] ? month : "all");
 }
 
+static void handle_wallet_recharge(int client_socket, char *body) {
+  char username[50] = "", method[30] = "";
+  double amount = 0.0;
+
+  parse_json_string(body, "username", username, sizeof(username));
+  parse_json_string(body, "method", method, sizeof(method));
+  char *amt_ptr = strstr(body, "\"amount\":");
+  if (amt_ptr) {
+    sscanf(amt_ptr + 9, "%lf", &amount);
+  }
+
+  if (strlen(username) == 0 || amount <= 0) {
+    char response[] =
+        "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+        "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"参数错误\"}";
+    send(client_socket, response, strlen(response), 0);
+    return;
+  }
+  if (amount > 10000) {
+    char response[] =
+        "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+        "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"单笔充值上限10000元\"}";
+    send(client_socket, response, strlen(response), 0);
+    return;
+  }
+
+  int rc = wallet_recharge(username, amount, method);
+  if (rc > 0) {
+    double new_balance = get_user_balance(username);
+    char resp[256];
+    snprintf(resp, sizeof(resp),
+             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+             "{\"status\":\"success\",\"newBalance\":%.2f}", new_balance);
+    send(client_socket, resp, strlen(resp), 0);
+    log_message(LOG_INFO, "Wallet recharge: user=%s amount=%.2f method=%s",
+                username, amount, method[0] ? method : "unknown");
+  } else {
+    char response[] =
+        "HTTP/1.1 500 Internal Server Error\r\nContent-Type: "
+        "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"充值失败\"}";
+    send(client_socket, response, strlen(response), 0);
+    log_message(LOG_ERROR, "Wallet recharge failed: user=%s amount=%.2f", username, amount);
+  }
+}
+
+static void handle_wallet_withdraw(int client_socket, char *body) {
+  char username[50] = "", method[30] = "";
+  double amount = 0.0;
+
+  parse_json_string(body, "username", username, sizeof(username));
+  parse_json_string(body, "method", method, sizeof(method));
+  char *amt_ptr = strstr(body, "\"amount\":");
+  if (amt_ptr) {
+    sscanf(amt_ptr + 9, "%lf", &amount);
+  }
+
+  if (strlen(username) == 0 || amount <= 0) {
+    char response[] =
+        "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+        "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"参数错误\"}";
+    send(client_socket, response, strlen(response), 0);
+    return;
+  }
+
+  double balance = get_user_balance(username);
+  if (amount > balance) {
+    char response[] =
+        "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+        "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"余额不足\"}";
+    send(client_socket, response, strlen(response), 0);
+    return;
+  }
+
+  int rc = wallet_withdraw(username, amount, method);
+  if (rc == -2) {
+    char response[] =
+        "HTTP/1.1 400 Bad Request\r\nContent-Type: "
+        "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"余额不足\"}";
+    send(client_socket, response, strlen(response), 0);
+    return;
+  } else if (rc > 0) {
+    double new_balance = get_user_balance(username);
+    char resp[256];
+    snprintf(resp, sizeof(resp),
+             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n"
+             "{\"status\":\"success\",\"newBalance\":%.2f}", new_balance);
+    send(client_socket, resp, strlen(resp), 0);
+    log_message(LOG_INFO, "Wallet withdraw: user=%s amount=%.2f method=%s",
+                username, amount, method[0] ? method : "unknown");
+  } else {
+    char response[] =
+        "HTTP/1.1 500 Internal Server Error\r\nContent-Type: "
+        "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"提现失败\"}";
+    send(client_socket, response, strlen(response), 0);
+    log_message(LOG_ERROR, "Wallet withdraw failed: user=%s amount=%.2f", username, amount);
+  }
+}
+
 static void handle_get_templates(int client_socket, char *query_string) {
   char creator[50] = "";
 
@@ -1578,6 +1727,18 @@ void handle_request(int client_socket) {
     char *path_start = strstr(buffer, "GET /api/wallet/transactions");
     char *q = strstr(path_start, "?");
     handle_get_wallet_txns(client_socket, q);
+  } else if (strstr(buffer, "POST /api/wallet/recharge")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_wallet_recharge(client_socket, body);
+    }
+  } else if (strstr(buffer, "POST /api/wallet/withdraw")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_wallet_withdraw(client_socket, body);
+    }
   } else if (strstr(buffer, "GET /api/templates")) {
     char *path_start = strstr(buffer, "GET /api/templates");
     char *q = strstr(path_start, "?");

@@ -3339,10 +3339,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const payload = {
                 reporter: currentUser.username,
-                report_type: typeRadio.value,
+                reportType: typeRadio.value,
                 description: description,
-                order_id: elements.reportOrderId ? elements.reportOrderId.value : '',
-                target_user: elements.reportTargetUser ? elements.reportTargetUser.value : ''
+                orderId: elements.reportOrderId ? elements.reportOrderId.value : '',
+                targetUser: elements.reportTargetUser ? elements.reportTargetUser.value : ''
             };
 
             try {
@@ -3353,7 +3353,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 const data = await resp.json();
                 if (resp.ok && data.status === 'success') {
-                    showToast(`举报提交成功！工单号：${data.report_id}`);
+                    showToast(`举报提交成功！工单号：${data.id}`);
                     elements.reportModal.classList.add('hidden');
                     elements.reportForm.reset();
                     if (!document.getElementById('profile-tab').classList.contains('hidden')) {
@@ -3409,22 +3409,22 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="my-report-item">
                 <div class="my-report-header">
                     <div class="my-report-title">
-                        <span class="report-badge ${r.report_type}">${typeTextMap[r.report_type] || r.report_type}</span>
+                        <span class="report-badge ${r.reportType}">${typeTextMap[r.reportType] || r.reportType}</span>
                         <span class="my-report-id">#${r.id}</span>
                     </div>
                     <span class="report-status ${r.status}">${statusTextMap[r.status] || r.status}</span>
                 </div>
                 <div class="my-report-desc">${escapeHtml(r.description)}</div>
                 <div class="my-report-meta">
-                    <span><i class="fas fa-hashtag"></i> 订单号: ${r.order_id || '-'}</span>
-                    <span><i class="fas fa-user"></i> 被举报: ${escapeHtml(r.target_user || '-')}</span>
-                    <span><i class="far fa-clock"></i> ${formatDate(r.created_at)}</span>
+                    <span><i class="fas fa-hashtag"></i> 订单号: ${r.orderId || '-'}</span>
+                    <span><i class="fas fa-user"></i> 被举报: ${escapeHtml(r.targetUser || '-')}</span>
+                    <span><i class="far fa-clock"></i> ${formatDate(r.createdAt)}</span>
                 </div>
-                ${r.handler_note ? `
+                ${r.handlerNote ? `
                 <div class="my-report-handler-note">
                     <div class="mhrn-label"><i class="fas fa-comment-dots"></i> 处理备注</div>
-                    <div class="mhrn-content">${escapeHtml(r.handler_note)}</div>
-                    ${r.handled_at ? `<div class="mhrn-time">处理时间: ${formatDate(r.handled_at)}</div>` : ''}
+                    <div class="mhrn-content">${escapeHtml(r.handlerNote)}</div>
+                    ${r.handledAt ? `<div class="mhrn-time">处理时间: ${formatDate(r.handledAt)}</div>` : ''}
                 </div>
                 ` : ''}
             </div>
@@ -3529,7 +3529,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="admin-report-item">
                 <div class="admin-report-header">
                     <div class="admin-report-title-row">
-                        <span class="report-badge ${r.report_type}">${typeTextMap[r.report_type] || r.report_type}</span>
+                        <span class="report-badge ${r.reportType}">${typeTextMap[r.reportType] || r.reportType}</span>
                         <span class="admin-report-id">#${r.id}</span>
                     </div>
                     <span class="report-status ${r.status}">${statusTextMap[r.status] || r.status}</span>
@@ -3541,26 +3541,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                     <div class="ari-row">
                         <span class="ari-label">被举报</span>
-                        <span class="ari-value">${escapeHtml(r.target_user || '-')}</span>
+                        <span class="ari-value">${escapeHtml(r.targetUser || '-')}</span>
                     </div>
                     <div class="ari-row">
                         <span class="ari-label">关联订单</span>
-                        <span class="ari-value">#${r.order_id || '-'}</span>
+                        <span class="ari-value">#${r.orderId || '-'}</span>
                     </div>
                     <div class="ari-row">
                         <span class="ari-label">提交时间</span>
-                        <span class="ari-value">${formatDate(r.created_at)}</span>
+                        <span class="ari-value">${formatDate(r.createdAt)}</span>
                     </div>
                 </div>
                 <div class="admin-report-desc">
                     <div class="ard-label">举报详情</div>
                     <div class="ard-content">${escapeHtml(r.description)}</div>
                 </div>
-                ${r.handler_note ? `
+                ${r.handlerNote ? `
                 <div class="admin-report-handler-note">
                     <div class="ard-label">处理备注</div>
-                    <div class="ard-content">${escapeHtml(r.handler_note)}</div>
-                    ${r.handled_at ? `<div class="ard-time">处理于 ${formatDate(r.handled_at)}</div>` : ''}
+                    <div class="ard-content">${escapeHtml(r.handlerNote)}</div>
+                    ${r.handledAt ? `<div class="ard-time">处理于 ${formatDate(r.handledAt)}</div>` : ''}
                 </div>
                 ` : ''}
                 <div class="admin-report-actions">
@@ -3585,13 +3585,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (elements.adminReportId) elements.adminReportId.value = report.id;
         if (elements.adminReportDetailId) elements.adminReportDetailId.textContent = `#${report.id}`;
         if (elements.adminReportDetailReporter) elements.adminReportDetailReporter.textContent = report.reporter;
-        if (elements.adminReportDetailTarget) elements.adminReportDetailTarget.textContent = report.target_user || '-';
-        if (elements.adminReportDetailType) elements.adminReportDetailType.textContent = typeTextMap[report.report_type] || report.report_type;
-        if (elements.adminReportDetailOrder) elements.adminReportDetailOrder.textContent = report.order_id ? `#${report.order_id}` : '-';
+        if (elements.adminReportDetailTarget) elements.adminReportDetailTarget.textContent = report.targetUser || '-';
+        if (elements.adminReportDetailType) elements.adminReportDetailType.textContent = typeTextMap[report.reportType] || report.reportType;
+        if (elements.adminReportDetailOrder) elements.adminReportDetailOrder.textContent = report.orderId ? `#${report.orderId}` : '-';
         if (elements.adminReportDetailDesc) elements.adminReportDetailDesc.textContent = report.description;
-        if (elements.adminReportDetailTime) elements.adminReportDetailTime.textContent = formatDate(report.created_at);
+        if (elements.adminReportDetailTime) elements.adminReportDetailTime.textContent = formatDate(report.createdAt);
         if (elements.adminReportStatus) elements.adminReportStatus.value = report.status;
-        if (elements.adminReportHandlerNote) elements.adminReportHandlerNote.value = report.handler_note || '';
+        if (elements.adminReportHandlerNote) elements.adminReportHandlerNote.value = report.handlerNote || '';
 
         elements.adminReportModal.classList.remove('hidden');
     };
@@ -3611,7 +3611,7 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
             const id = parseInt(elements.adminReportId.value);
             const status = elements.adminReportStatus ? elements.adminReportStatus.value : '';
-            const handler_note = elements.adminReportHandlerNote ? elements.adminReportHandlerNote.value.trim() : '';
+            const handlerNote = elements.adminReportHandlerNote ? elements.adminReportHandlerNote.value.trim() : '';
 
             if (!status) {
                 showToast('请选择处理状态');
@@ -3622,7 +3622,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const resp = await fetch('/api/reports_update', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id, status, handler_note, username: currentUser.username })
+                    body: JSON.stringify({ id, status, handlerNote, username: currentUser.username })
                 });
                 const data = await resp.json();
                 if (resp.ok && data.status === 'success') {

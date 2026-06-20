@@ -1767,26 +1767,26 @@ void handle_request(int client_socket) {
       body += 4;
       handle_set_default_template(client_socket, body);
     }
-  } else if (strstr(buffer, "POST /api/reports")) {
-    char *body = strstr(buffer, "\r\n\r\n");
-    if (body) {
-      body += 4;
-      handle_create_report(client_socket, body);
-    }
-  } else if (strstr(buffer, "GET /api/reports")) {
-    char *path_start = strstr(buffer, "GET /api/reports");
-    char *q = strstr(path_start, "?");
-    handle_get_reports(client_socket, q);
-  } else if (strstr(buffer, "GET /api/reports/all")) {
-    char *path_start = strstr(buffer, "GET /api/reports/all");
-    char *q = strstr(path_start, "?");
-    handle_get_all_reports(client_socket, q);
   } else if (strstr(buffer, "POST /api/reports_update")) {
     char *body = strstr(buffer, "\r\n\r\n");
     if (body) {
       body += 4;
       handle_update_report(client_socket, body);
     }
+  } else if (strstr(buffer, "POST /api/reports")) {
+    char *body = strstr(buffer, "\r\n\r\n");
+    if (body) {
+      body += 4;
+      handle_create_report(client_socket, body);
+    }
+  } else if (strstr(buffer, "GET /api/reports/all")) {
+    char *path_start = strstr(buffer, "GET /api/reports/all");
+    char *q = strstr(path_start, "?");
+    handle_get_all_reports(client_socket, q);
+  } else if (strstr(buffer, "GET /api/reports")) {
+    char *path_start = strstr(buffer, "GET /api/reports");
+    char *q = strstr(path_start, "?");
+    handle_get_reports(client_socket, q);
   } else if (strstr(buffer, "GET /api/badges")) {
     char *path_start = strstr(buffer, "GET /api/badges");
     char *q = strstr(path_start, "?");

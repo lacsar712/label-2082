@@ -1028,6 +1028,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         <span class="podium-stat-val">${runner.goodRate}%</span>
                         <span class="podium-stat-lab">好评率</span>
                     </div>
+                    <div class="podium-stat">
+                        <span class="podium-stat-val">${runner.weekActivity}</span>
+                        <span class="podium-stat-lab">近7日</span>
+                    </div>
                 </div>
             `;
             card.onclick = () => toggleRunnerDetail(runner.username, card);

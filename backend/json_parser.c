@@ -247,16 +247,8 @@ void get_leaderboard_json(char *buf, const char *period) {
     qsort(stats, runner_count, sizeof(RunnerStats), sort_total);
 
   strcat(buf, "[");
+  int rank_counter = 0;
   for (int i = 0; i < runner_count; i++) {
-    if (i > 0)
-      strcat(buf, ",");
-    float avg_rating = stats[i].rated_orders > 0
-                           ? (float)stats[i].total_rating / stats[i].rated_orders
-                           : 5.0f;
-    if (avg_rating > 5.0f)
-      avg_rating = 5.0f;
-    float good_rate = (avg_rating / 5.0f) * 100.0f;
-
     int display_orders;
     if (strcmp(period, "week") == 0)
       display_orders = stats[i].week_orders;
@@ -265,12 +257,25 @@ void get_leaderboard_json(char *buf, const char *period) {
     else
       display_orders = stats[i].total_orders;
 
+    if (display_orders == 0)
+      continue;
+
+    rank_counter++;
+    if (rank_counter > 1)
+      strcat(buf, ",");
+    float avg_rating = stats[i].rated_orders > 0
+                           ? (float)stats[i].total_rating / stats[i].rated_orders
+                           : 5.0f;
+    if (avg_rating > 5.0f)
+      avg_rating = 5.0f;
+    float good_rate = (avg_rating / 5.0f) * 100.0f;
+
     char item[1024];
     sprintf(item,
             "{\"rank\":%d,\"username\":\"%s\",\"nickname\":\"%s\","
             "\"major\":\"%s\",\"totalOrders\":%d,\"goodRate\":%.1f,"
             "\"weekActivity\":%d}",
-            i + 1, stats[i].username, stats[i].real_name, stats[i].major,
+            rank_counter, stats[i].username, stats[i].real_name, stats[i].major,
             display_orders, good_rate, stats[i].week_orders);
     strcat(buf, item);
   }

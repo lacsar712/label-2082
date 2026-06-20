@@ -1236,7 +1236,7 @@ static void handle_set_default_template(int client_socket, char *body) {
   char creator[50] = "";
   parse_json_string(body, "creator", creator, sizeof(creator));
 
-  if (id == -1 || strlen(creator) == 0) {
+  if (strlen(creator) == 0 || (id < 1 && id != -1)) {
     char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
                   "application/json\r\n\r\n{\"status\":\"error\",\"message\":\"缺少必填字段\"}";
     send(client_socket, resp, strlen(resp), 0);

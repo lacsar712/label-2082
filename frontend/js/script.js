@@ -2923,10 +2923,21 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('pkg-reward').value = tpl.reward || '';
     }
 
+    function updateTemplateBanner(tpl) {
+        if (!elements.defaultTemplateBanner) return;
+        if (tpl && tpl.isDefault) {
+            elements.defaultTemplateName.textContent = `「${tpl.templateName}」`;
+            elements.defaultTemplateBanner.classList.remove('hidden');
+        } else {
+            elements.defaultTemplateBanner.classList.add('hidden');
+        }
+    }
+
     window.useTemplate = async (id) => {
         const tpl = templatesState.allTemplates.find(t => t.id === id);
         if (!tpl) return;
         fillOrderFormWithTemplate(tpl);
+        updateTemplateBanner(tpl);
         document.querySelector('[data-tab="post-task"]').click();
         showToast(`已使用模板「${tpl.templateName}」`);
     };
@@ -3284,6 +3295,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const tpl = (window._selTemplates || []).find(t => t.id === id);
         if (!tpl) return;
         fillOrderFormWithTemplate(tpl);
+        updateTemplateBanner(tpl);
         elements.selectTemplateModal.classList.add('hidden');
         showToast(`已使用模板「${tpl.templateName}」`);
     };

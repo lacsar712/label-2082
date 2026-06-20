@@ -1483,10 +1483,13 @@ static void handle_get_badges(int client_socket, char *query_string) {
 static void handle_generate_share_code(int client_socket, char *body) {
   char creator[50] = "";
   int order_id = -1;
+  int force_new = 0;
 
   parse_json_string(body, "creator", creator, sizeof(creator));
   char *id_ptr = strstr(body, "\"orderId\":");
   if (id_ptr) sscanf(id_ptr + 10, "%d", &order_id);
+  char *force_ptr = strstr(body, "\"forceNew\":");
+  if (force_ptr) sscanf(force_ptr + 10, "%d", &force_new);
 
   if (strlen(creator) == 0 || order_id == -1) {
     char resp[] = "HTTP/1.1 400 Bad Request\r\nContent-Type: "
@@ -1496,7 +1499,7 @@ static void handle_generate_share_code(int client_socket, char *body) {
   }
 
   char code[8];
-  int result = generate_share_code(creator, order_id, code);
+  int result = generate_share_code(creator, order_id, code, force_new);
 
   if (result > 0) {
     char resp[512];

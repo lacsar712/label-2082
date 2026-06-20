@@ -398,10 +398,17 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) { console.error(err); }
     }
 
+    let shareCodeForceRefresh = false;
+
     function renderOrders(orders, container, isMyOrders = false) {
         container.innerHTML = '';
         if (!isMyOrders) {
-            orders = orders.filter(o => o.status === 'pending' && o.creator !== currentUser.username);
+            if (shareCodeForceRefresh) {
+                orders = orders.filter(o => o.status === 'pending');
+                shareCodeForceRefresh = false;
+            } else {
+                orders = orders.filter(o => o.status === 'pending' && o.creator !== currentUser.username);
+            }
         }
 
         if (orders.length === 0) {
@@ -634,12 +641,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentShareCodeOrderId = null;
     let highlightTimer = null;
 
-    async function generateShareCode(orderId) {
+    async function generateShareCode(orderId, forceNew = false) {
         try {
             const resp = await fetch('/api/share_code/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ creator: currentUser.username, orderId: orderId })
+                body: JSON.stringify({ creator: currentUser.username, orderId: orderId, forceNew: forceNew ? 1 : 0 })
             });
             const data = await resp.json();
             if (data.status === 'success') {
@@ -776,10 +783,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function scrollToAndHighlightOrder(orderId) {
         const card = document.querySelector(`.order-card[data-order-id="${orderId}"]`);
         if (!card) {
+            shareCodeForceRefresh = true;
             fetchOrders().then(() => {
                 const newCard = document.querySelector(`.order-card[data-order-id="${orderId}"]`);
                 if (newCard) {
                     doHighlight(newCard);
+                } else {
+                    showToast('订单未在任务大厅展示，请在「我的订单」中查看');
                 }
             });
             return;
@@ -830,12 +840,23 @@ document.addEventListener('DOMContentLoaded', () => {
     elements.shareCodeGenerateBtn.onclick = async () => {
         if (currentShareCodeOrderId) {
             elements.shareCodeDisplayText.textContent = '生成中...';
-            const code = await generateShareCode(currentShareCodeOrderId);
+            const code = await generateShareCode(currentShareCodeOrderId, true);
             if (code) {
                 elements.shareCodeDisplayText.textContent = code;
                 const orderInfo = await getOrderById(currentShareCodeOrderId);
                 const shareText = generateShareText(orderInfo, code);
                 elements.shareCodeShareText.textContent = shareText;
+
+                try {
+                    const resp = await fetch(`/api/share_code?creator=${encodeURIComponent(currentUser.username)}&orderId=${currentShareCodeOrderId}`);
+                    const data = await resp.json();
+                    if (data.exists && data.expiresInSeconds) {
+                        elements.shareCodeExpiry.innerHTML = `<i class="fas fa-clock"></i> 有效期：${formatTimeRemaining(data.expiresInSeconds)}`;
+                    }
+                } catch (e) {
+                    elements.shareCodeExpiry.innerHTML = '<i class="fas fa-clock"></i> 有效期：24小时';
+                }
+
                 showToast('新口令已生成');
             }
         }

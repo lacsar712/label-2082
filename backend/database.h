@@ -67,7 +67,7 @@ Report* find_report_by_id(int id);
 void check_and_unlock_badges(const char *username);
 void get_badges_json(char *json, const char *username);
 
-int generate_share_code(const char *creator, int order_id, char *out_code);
+int generate_share_code(const char *creator, int order_id, char *out_code, int force_new);
 int verify_share_code(const char *code, int *out_order_id, char *out_message);
 void get_share_code_by_order_json(char *json, int order_id, const char *creator);
 void cleanup_expired_share_codes();

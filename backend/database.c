@@ -1469,21 +1469,31 @@ static int parse_datetime(const char *datetime_str, time_t *out_time) {
   return 0;
 }
 
-int generate_share_code(const char *creator, int order_id, char *out_code) {
+int generate_share_code(const char *creator, int order_id, char *out_code, int force_new) {
   cleanup_expired_share_codes();
 
-  for (int i = 0; i < share_code_count; i++) {
-    if (share_codes[i].order_id == order_id &&
-        strcmp(share_codes[i].creator, creator) == 0 &&
-        share_codes[i].is_valid) {
-      time_t now = time(NULL);
-      time_t expires_at;
-      if (parse_datetime(share_codes[i].expires_at, &expires_at) == 0 &&
-          difftime(expires_at, now) > 0) {
-        strncpy(out_code, share_codes[i].code, 8);
-        return share_codes[i].id;
-      } else {
+  if (force_new) {
+    for (int i = 0; i < share_code_count; i++) {
+      if (share_codes[i].order_id == order_id &&
+          strcmp(share_codes[i].creator, creator) == 0 &&
+          share_codes[i].is_valid) {
         share_codes[i].is_valid = 0;
+      }
+    }
+  } else {
+    for (int i = 0; i < share_code_count; i++) {
+      if (share_codes[i].order_id == order_id &&
+          strcmp(share_codes[i].creator, creator) == 0 &&
+          share_codes[i].is_valid) {
+        time_t now = time(NULL);
+        time_t expires_at;
+        if (parse_datetime(share_codes[i].expires_at, &expires_at) == 0 &&
+            difftime(expires_at, now) > 0) {
+          strncpy(out_code, share_codes[i].code, 8);
+          return share_codes[i].id;
+        } else {
+          share_codes[i].is_valid = 0;
+        }
       }
     }
   }
